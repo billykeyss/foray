@@ -12,6 +12,7 @@ const tabs = [
   { href: "/map", label: "Map" },
   { href: "/catalog", label: "Guide" },
   { href: "/trees", label: "Trees" },
+  { href: "/plants", label: "Greens" },
   { href: "/charts", label: "Charts" },
   { href: "/journal", label: "Journal" },
 ];

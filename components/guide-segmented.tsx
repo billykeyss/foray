@@ -11,13 +11,16 @@ import { usePathname } from "next/navigation";
 export default function GuideSegmented({
   mushroomCount,
   treeCount,
+  plantCount,
 }: {
   mushroomCount: number;
   treeCount: number;
+  plantCount: number;
 }) {
   const pathname = usePathname();
   const isMushrooms = pathname.startsWith("/catalog");
   const isTrees = pathname.startsWith("/trees");
+  const isPlants = pathname.startsWith("/plants");
 
   return (
     <div
@@ -46,6 +49,13 @@ export default function GuideSegmented({
         label="Trees"
         count={treeCount}
         icon={<TreeIcon />}
+      />
+      <Segment
+        href="/plants"
+        active={isPlants}
+        label="Greens"
+        count={plantCount}
+        icon={<LeafIcon />}
       />
     </div>
   );
@@ -136,6 +146,25 @@ function TreeIcon() {
     >
       <path d="M12 3 L7 10 L9 10 L5.5 15 L8 15 L4 21 L20 21 L16 15 L18.5 15 L15 10 L17 10 Z" />
       <rect x="11" y="20" width="2" height="3" />
+    </svg>
+  );
+}
+
+function LeafIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      stroke="currentColor"
+      strokeWidth={1}
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {/* A single sprig — leaf blade with a midrib stem */}
+      <path d="M20 4 C10 4, 4 10, 4 20 C14 20, 20 14, 20 4 Z" />
+      <path d="M11 13 L17 7" stroke="var(--parchment)" strokeWidth={1.1} fill="none" opacity="0.55" />
     </svg>
   );
 }
