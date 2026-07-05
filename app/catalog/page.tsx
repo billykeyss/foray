@@ -14,6 +14,7 @@ import SpeciesPhoto from "@/components/species-photo";
 import GuideSegmented from "@/components/guide-segmented";
 import { TREE_CATALOG } from "@/lib/tree-catalog";
 import { EDIBLE_PLANTS } from "@/lib/plant-catalog";
+import { HARVESTABLE_OCEAN } from "@/lib/ocean-catalog";
 
 const EDIBILITY_FILTERS: { key: Edibility | "all"; label: string }[] = [
   { key: "all", label: "Any" },
@@ -104,6 +105,7 @@ export default function CatalogPage() {
         mushroomCount={PNW_CATALOG.length}
         treeCount={TREE_CATALOG.length}
         plantCount={EDIBLE_PLANTS.length}
+        oceanCount={HARVESTABLE_OCEAN.length}
       />
 
       <div

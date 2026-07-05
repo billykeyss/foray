@@ -11,11 +11,13 @@ const tabs = [
   { href: "/", label: "Today" },
   { href: "/map", label: "Map" },
   { href: "/catalog", label: "Guide" },
-  { href: "/trees", label: "Trees" },
-  { href: "/plants", label: "Greens" },
   { href: "/charts", label: "Charts" },
   { href: "/journal", label: "Journal" },
 ];
+
+// Trees, Greens and Tide live under Guide — reached via the in-page segmented
+// control, so the Guide entry stays highlighted on those routes.
+const GUIDE_ROUTES = ["/catalog", "/trees", "/plants", "/ocean"];
 
 export default function SideNav() {
   const pathname = usePathname();
@@ -77,7 +79,11 @@ export default function SideNav() {
       <nav className="flex flex-col gap-1">
         {tabs.map((t) => {
           const active =
-            t.href === "/" ? pathname === "/" : pathname.startsWith(t.href);
+            t.href === "/"
+              ? pathname === "/"
+              : t.href === "/catalog"
+                ? GUIDE_ROUTES.some((r) => pathname.startsWith(r))
+                : pathname.startsWith(t.href);
           return (
             <Link
               key={t.href}

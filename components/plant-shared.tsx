@@ -3,11 +3,37 @@
  * No client hooks — safe to import from both server and client components.
  */
 import type { PlantEdibility, PlantSpecies } from "@/lib/plant-types";
+import type { PlantDetailImage } from "@/lib/plant-image-types";
 
 export const MONTH_ABBR = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
+
+/** Human labels for the plant photo-gallery feature tags. */
+export const PLANT_KIND_LABEL: Record<string, string> = {
+  whole: "Whole plant",
+  leaf: "Leaves",
+  flower: "Flowers",
+  fruit: "Fruit",
+  seed: "Seed",
+  bark: "Stem & bark",
+  root: "Root",
+  habitat: "In situ",
+};
+
+/** Pick the most representative photo for a hero / card thumbnail. */
+export function pickHero(
+  images: PlantDetailImage[] | undefined
+): PlantDetailImage | undefined {
+  if (!images || images.length === 0) return undefined;
+  const order = ["whole", "flower", "leaf", "fruit", "habitat", "seed", "bark", "root"];
+  for (const k of order) {
+    const hit = images.find((im) => im.kind === k);
+    if (hit) return hit;
+  }
+  return images[0];
+}
 
 export interface EdibilityMeta {
   label: string;
