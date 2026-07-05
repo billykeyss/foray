@@ -12,15 +12,18 @@ export default function GuideSegmented({
   mushroomCount,
   treeCount,
   plantCount,
+  oceanCount,
 }: {
   mushroomCount: number;
   treeCount: number;
   plantCount: number;
+  oceanCount: number;
 }) {
   const pathname = usePathname();
   const isMushrooms = pathname.startsWith("/catalog");
   const isTrees = pathname.startsWith("/trees");
   const isPlants = pathname.startsWith("/plants");
+  const isOcean = pathname.startsWith("/ocean");
 
   return (
     <div
@@ -56,6 +59,13 @@ export default function GuideSegmented({
         label="Greens"
         count={plantCount}
         icon={<LeafIcon />}
+      />
+      <Segment
+        href="/ocean"
+        active={isOcean}
+        label="Tide"
+        count={oceanCount}
+        icon={<WaveIcon />}
       />
     </div>
   );
@@ -165,6 +175,25 @@ function LeafIcon() {
       {/* A single sprig — leaf blade with a midrib stem */}
       <path d="M20 4 C10 4, 4 10, 4 20 C14 20, 20 14, 20 4 Z" />
       <path d="M11 13 L17 7" stroke="var(--parchment)" strokeWidth={1.1} fill="none" opacity="0.55" />
+    </svg>
+  );
+}
+
+function WaveIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      aria-hidden
+    >
+      {/* Two stacked swells */}
+      <path d="M2 9 Q6 5, 10 9 T18 9 Q20 9, 22 8" />
+      <path d="M2 15 Q6 11, 10 15 T18 15 Q20 15, 22 14" />
     </svg>
   );
 }

@@ -9,9 +9,13 @@ import { useRegion } from "@/lib/region-context";
 import GuideSegmented from "@/components/guide-segmented";
 import { PNW_CATALOG } from "@/lib/species-catalog";
 import { TREE_CATALOG } from "@/lib/tree-catalog";
+import { HARVESTABLE_OCEAN } from "@/lib/ocean-catalog";
+import { PLANT_GALLERY } from "@/lib/plant-gallery";
+import { localImage } from "@/lib/image-src";
 import {
   edibilityChip,
   PlantEmoji,
+  pickHero,
   MONTH_ABBR,
 } from "@/components/plant-shared";
 
@@ -81,6 +85,7 @@ export default function PlantsPage() {
         mushroomCount={PNW_CATALOG.length}
         treeCount={TREE_CATALOG.length}
         plantCount={PLANT_CATALOG.filter((p) => !WARNING.includes(p.edibility)).length}
+        oceanCount={HARVESTABLE_OCEAN.length}
       />
 
       <div
@@ -203,6 +208,7 @@ function PlantGrid({
         const chip = edibilityChip(p.edibility);
         const inSeason = p.harvestMonths.includes(month);
         const isWarning = WARNING.includes(p.edibility);
+        const hero = pickHero(PLANT_GALLERY[p.id]);
         return (
           <li key={p.id}>
             <Link
@@ -210,21 +216,37 @@ function PlantGrid({
               className="block card-paper relative overflow-hidden"
               style={{ padding: 0, textDecoration: "none", color: "inherit" }}
             >
-              <div
-                style={{
-                  width: "100%",
-                  aspectRatio: "4 / 3",
-                  borderRadius: "14px 14px 0 0",
-                  background: isWarning
-                    ? "linear-gradient(135deg, rgba(160,40,40,0.1), rgba(192,84,32,0.06))"
-                    : "linear-gradient(135deg, rgba(44,58,42,0.09), rgba(107,125,93,0.06))",
-                  display: "grid",
-                  placeItems: "center",
-                  fontSize: 40,
-                }}
-              >
-                <PlantEmoji plant={p} />
-              </div>
+              {hero ? (
+                <img
+                  src={localImage(hero.thumb ?? hero.url)}
+                  alt={p.scientific}
+                  loading="lazy"
+                  style={{
+                    width: "100%",
+                    aspectRatio: "4 / 3",
+                    objectFit: "cover",
+                    borderRadius: "14px 14px 0 0",
+                    background: "rgba(26,20,16,0.06)",
+                    display: "block",
+                  }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: "100%",
+                    aspectRatio: "4 / 3",
+                    borderRadius: "14px 14px 0 0",
+                    background: isWarning
+                      ? "linear-gradient(135deg, rgba(160,40,40,0.1), rgba(192,84,32,0.06))"
+                      : "linear-gradient(135deg, rgba(44,58,42,0.09), rgba(107,125,93,0.06))",
+                    display: "grid",
+                    placeItems: "center",
+                    fontSize: 40,
+                  }}
+                >
+                  <PlantEmoji plant={p} />
+                </div>
+              )}
               <div style={{ padding: 16 }}>
                 <div className="flex items-start justify-between gap-2">
                   <div

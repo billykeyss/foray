@@ -11,8 +11,8 @@ const tabs = [
   { href: "/journal", label: "Journal", icon: JournalIcon },
 ];
 
-// /trees and /plants live under the Guide tab — toggled via the in-page segmented control
-const GUIDE_ROUTES = ["/catalog", "/trees", "/plants"];
+// /trees, /plants and /ocean live under the Guide tab — toggled via the in-page segmented control
+const GUIDE_ROUTES = ["/catalog", "/trees", "/plants", "/ocean"];
 
 export default function TabBar() {
   const pathname = usePathname();

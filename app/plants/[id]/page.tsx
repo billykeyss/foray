@@ -3,10 +3,15 @@ import { notFound } from "next/navigation";
 import { PLANT_CATALOG } from "@/lib/plant-catalog";
 import type { PlantLookalike, PlantSpecies } from "@/lib/plant-types";
 import type { Danger } from "@/lib/species-types";
+import { PLANT_GALLERY } from "@/lib/plant-gallery";
+import { localImage } from "@/lib/image-src";
+import PhotoGallery from "@/components/photo-gallery";
 import {
   edibilityMeta,
   MONTH_ABBR,
   PlantEmoji,
+  pickHero,
+  PLANT_KIND_LABEL,
 } from "@/components/plant-shared";
 
 export function generateStaticParams() {
@@ -50,6 +55,9 @@ export default async function PlantDetail({
 
   const isWarning = WARNING.has(p.edibility);
   const month = new Date().getMonth() + 1;
+  const images = PLANT_GALLERY[p.id] ?? [];
+  const hero = pickHero(images);
+  const galleryRest = images.filter((im) => im.url !== hero?.url);
 
   return (
     <main className="relative z-10 px-6 pt-14 pb-6 lg:px-12 lg:pt-16 lg:max-w-[1280px] 2xl:max-w-none 2xl:px-16">
@@ -124,22 +132,60 @@ export default async function PlantDetail({
       )}
 
       <div className="mt-7">
-        <div
-          style={{
-            width: "100%",
-            aspectRatio: "16 / 7",
-            borderRadius: 16,
-            background: isWarning
-              ? "linear-gradient(135deg, rgba(160,40,40,0.12), rgba(192,84,32,0.07))"
-              : "linear-gradient(135deg, rgba(44,58,42,0.1), rgba(107,125,93,0.07))",
-            display: "grid",
-            placeItems: "center",
-            fontSize: 72,
-          }}
-        >
-          <PlantEmoji plant={p} />
-        </div>
+        {hero ? (
+          <figure style={{ margin: 0 }}>
+            <img
+              src={localImage(hero.url)}
+              alt={p.scientific}
+              style={{
+                width: "100%",
+                aspectRatio: "16 / 7",
+                objectFit: "cover",
+                borderRadius: 16,
+                background: "rgba(26,20,16,0.06)",
+                display: "block",
+              }}
+            />
+            {(hero.artist || hero.license) && (
+              <figcaption
+                className="font-mono mt-1.5"
+                style={{
+                  fontSize: 8.5,
+                  letterSpacing: "0.1em",
+                  color: "var(--ink-soft)",
+                  opacity: 0.6,
+                }}
+              >
+                {[hero.artist, hero.license].filter(Boolean).join(" · ")}
+              </figcaption>
+            )}
+          </figure>
+        ) : (
+          <div
+            style={{
+              width: "100%",
+              aspectRatio: "16 / 7",
+              borderRadius: 16,
+              background: isWarning
+                ? "linear-gradient(135deg, rgba(160,40,40,0.12), rgba(192,84,32,0.07))"
+                : "linear-gradient(135deg, rgba(44,58,42,0.1), rgba(107,125,93,0.07))",
+              display: "grid",
+              placeItems: "center",
+              fontSize: 72,
+            }}
+          >
+            <PlantEmoji plant={p} />
+          </div>
+        )}
       </div>
+
+      {galleryRest.length > 0 && (
+        <PhotoGallery
+          images={galleryRest}
+          scientific={p.scientific}
+          kindLabel={PLANT_KIND_LABEL}
+        />
+      )}
 
       {!isWarning && p.harvestMonths.length > 0 && (
         <SeasonStrip
@@ -342,24 +388,42 @@ export default async function PlantDetail({
 
 function LookalikeCard({ lookalike: l }: { lookalike: PlantLookalike }) {
   const linkId = resolveLookalike(l);
+  const thumb = linkId ? pickHero(PLANT_GALLERY[linkId]) : undefined;
   const body = (
     <>
-      <div className="flex justify-between items-start gap-3">
-        <div className="min-w-0">
-          <div
-            className="font-display italic"
-            style={{ fontSize: 17, color: "var(--moss)", lineHeight: 1.1 }}
-          >
-            {l.name}
+      <div className="flex items-start gap-3">
+        {thumb && (
+          <img
+            src={localImage(thumb.thumb ?? thumb.url)}
+            alt={l.scientific}
+            loading="lazy"
+            style={{
+              width: 60,
+              height: 60,
+              objectFit: "cover",
+              borderRadius: 8,
+              flex: "none",
+              background: "rgba(26,20,16,0.06)",
+            }}
+          />
+        )}
+        <div className="min-w-0 flex-1 flex justify-between items-start gap-3">
+          <div className="min-w-0">
+            <div
+              className="font-display italic"
+              style={{ fontSize: 17, color: "var(--moss)", lineHeight: 1.1 }}
+            >
+              {l.name}
+            </div>
+            <div
+              className="font-display italic mt-0.5"
+              style={{ fontSize: 13, color: "var(--rust)", opacity: 0.85 }}
+            >
+              {l.scientific}
+            </div>
           </div>
-          <div
-            className="font-display italic mt-0.5"
-            style={{ fontSize: 13, color: "var(--rust)", opacity: 0.85 }}
-          >
-            {l.scientific}
-          </div>
+          <DangerBadge danger={l.danger} />
         </div>
-        <DangerBadge danger={l.danger} />
       </div>
       {l.keyFeatures && l.keyFeatures.length > 0 && (
         <ul
