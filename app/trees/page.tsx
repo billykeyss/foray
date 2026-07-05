@@ -6,6 +6,7 @@ import { TREE_CATALOG } from "@/lib/tree-catalog";
 import { localImage } from "@/lib/image-src";
 import GuideSegmented from "@/components/guide-segmented";
 import { PNW_CATALOG } from "@/lib/species-catalog";
+import { EDIBLE_PLANTS } from "@/lib/plant-catalog";
 
 export default function TreesPage() {
   const [q, setQ] = useState("");
@@ -51,6 +52,7 @@ export default function TreesPage() {
       <GuideSegmented
         mushroomCount={PNW_CATALOG.length}
         treeCount={TREE_CATALOG.length}
+        plantCount={EDIBLE_PLANTS.length}
       />
 
       <input

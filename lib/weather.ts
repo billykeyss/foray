@@ -241,6 +241,7 @@ export function computeSporeScore(days: DailyWeather[]): SporeReading {
 
 import { PNW_CATALOG } from "./species-catalog";
 import type { MushroomSpecies } from "./species-types";
+import type { Forageable } from "./forageable";
 
 export type { MushroomSpecies } from "./species-types";
 
@@ -334,9 +335,10 @@ export function suggestSpecies(
   return top.species;
 }
 
-/** Case-insensitive match: any of the species' regions contains any filter term. */
+/** Case-insensitive match: any of the entry's regions contains any filter term.
+ *  Typed against `Forageable` so mushrooms, trees and plants all reuse it. */
 export function speciesInRegions(
-  s: MushroomSpecies,
+  s: Pick<Forageable, "regionsPNW">,
   filterTerms?: string[] | null
 ): boolean {
   if (!filterTerms || filterTerms.length === 0) return true;
