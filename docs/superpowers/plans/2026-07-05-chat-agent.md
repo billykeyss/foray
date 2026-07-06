@@ -1665,7 +1665,13 @@ export default function ChatPanel() {
       });
 
       let finalText = result.text;
-      if (result.stopReason === "refusal") {
+      let stopped = false;
+      if (result.stopReason === "aborted") {
+        // agent.ts normalizes user cancellation into a RunResult — no SDK
+        // error type ever reaches this component.
+        stopped = true;
+        finalText = finalText ? `${finalText}\n\n_(stopped)_` : "_(stopped)_";
+      } else if (result.stopReason === "refusal") {
         finalText = finalText || "Claude declined this request.";
       } else if (result.exhausted) {
         finalText += `\n\n_(stopped after ${MAX_TOOL_TURNS} tool rounds)_`;
@@ -1675,20 +1681,11 @@ export default function ChatPanel() {
       persist({
         ...withUser,
         updatedAt: new Date().toISOString(),
-        turns: [...withUser.turns, { role: "assistant", text: finalText, cards }],
+        turns: [...withUser.turns, { role: "assistant", text: finalText, cards, stopped }],
       });
     } catch (err: unknown) {
-      const anyErr = err as { name?: string; status?: number; message?: string };
-      if (anyErr.name === "APIUserAbortError") {
-        persist({
-          ...withUser,
-          updatedAt: new Date().toISOString(),
-          turns: [
-            ...withUser.turns,
-            { role: "assistant", text: streamTextRefSafe(), cards, stopped: true },
-          ],
-        });
-      } else if (anyErr.status === 401) {
+      const anyErr = err as { status?: number; message?: string };
+      if (anyErr.status === 401) {
         setError("Your API key was rejected — check it in Settings.");
         setKeyDialogOpen(true);
       } else if (anyErr.status === 429) {
@@ -1702,16 +1699,6 @@ export default function ChatPanel() {
       setStreamText("");
       setStreamCards([]);
       abortRef.current = null;
-    }
-
-    // React state isn't readable synchronously after abort; snapshot helper:
-    function streamTextRefSafe() {
-      let snapshot = "";
-      setStreamText((t) => {
-        snapshot = t;
-        return t;
-      });
-      return snapshot ? `${snapshot}\n\n_(stopped)_` : "_(stopped)_";
     }
   }
 
@@ -1966,4 +1953,4 @@ Summarize results to the maintainer. Do NOT push — the maintainer pushes and d
 
 - **Spec coverage:** prompt/safety (Task 2), citations + safe rendering (Tasks 3, 8), sessions (Task 4, 10), tools + caps + cards (Tasks 5, 6, 9), loop/streaming/abort/web_search (Task 7), UI/gating/nav (Task 10), errors (Tasks 7, 10), tests (Tasks 2–6), build/QA (Task 11). Out-of-scope items from the spec have no tasks, as intended.
 - **Type consistency:** `ChatCard`/`ToolCard` are structurally identical (`{tool, data}`) — `ToolCard` in `lib/chat/tools.ts` (SDK-free layer), `ChatCard` in the store; the panel passes them interchangeably by shape.
-- The panel's `streamTextRefSafe` trick exists because the abort catch-block can't read the latest `streamText` state directly; it snapshots via the updater. Keep it — replacing it with a ref is fine too if the implementer prefers.
+- **Abort contract (revised in Task 7 review):** `runChatTurn` returns `stopReason: "aborted"` on user cancellation instead of letting the SDK's `APIUserAbortError` escape (its `.name` is `"Error"` at runtime, so name-based catches can never work). The panel handles abort as a normal result, keeping the SDK boundary inside `lib/chat/agent.ts`.
