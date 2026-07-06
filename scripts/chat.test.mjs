@@ -11,6 +11,8 @@ import {
   pruneSessions,
   createSession,
   turnsToMessages,
+  loadSessions,
+  saveSessions,
   MAX_SESSIONS,
   HISTORY_TURN_CAP,
 } from "../lib/chat/store.ts";
@@ -132,4 +134,43 @@ test("turnsToMessages caps history and maps to text messages", () => {
   assert.equal(msgs.length, HISTORY_TURN_CAP);
   assert.deepEqual(msgs[msgs.length - 1], { role: "assistant", content: "m19" });
   assert.equal(msgs[0].role, "user"); // must start with a user turn
+});
+
+test("loadSessions recovers from corrupt or foreign localStorage data", () => {
+  const backing = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (backing.has(k) ? backing.get(k) : null),
+    setItem: (k, v) => backing.set(k, String(v)),
+    removeItem: (k) => backing.delete(k),
+  };
+  try {
+    backing.set("foray.chat.sessions.v1", "{not json");
+    assert.deepEqual(loadSessions(), []);
+    backing.set("foray.chat.sessions.v1", JSON.stringify({ nope: 1 }));
+    assert.deepEqual(loadSessions(), []);
+    backing.set(
+      "foray.chat.sessions.v1",
+      JSON.stringify([null, { id: "ok", title: "t", createdAt: "c", updatedAt: "u", turns: [] }, { id: "no-turns" }])
+    );
+    const loaded = loadSessions();
+    assert.equal(loaded.length, 1);
+    assert.equal(loaded[0].id, "ok");
+  } finally {
+    delete globalThis.localStorage;
+  }
+});
+
+test("saveSessions swallows quota errors instead of throwing", () => {
+  globalThis.localStorage = {
+    getItem: () => null,
+    setItem: () => {
+      throw new Error("QuotaExceededError");
+    },
+    removeItem: () => {},
+  };
+  try {
+    assert.doesNotThrow(() => saveSessions([]));
+  } finally {
+    delete globalThis.localStorage;
+  }
 });

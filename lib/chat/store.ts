@@ -31,7 +31,7 @@ export const HISTORY_TURN_CAP = 12;
 
 export function pruneSessions(sessions: ChatSession[]): ChatSession[] {
   return [...sessions]
-    .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
+    .sort((a, b) => (a.updatedAt === b.updatedAt ? 0 : a.updatedAt < b.updatedAt ? 1 : -1))
     .slice(0, MAX_SESSIONS);
 }
 
@@ -65,7 +65,11 @@ export function loadSessions(): ChatSession[] {
     const raw = localStorage.getItem(KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (s): s is ChatSession =>
+        !!s && typeof s.id === "string" && Array.isArray(s.turns)
+    );
   } catch {
     return [];
   }
