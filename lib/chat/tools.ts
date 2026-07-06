@@ -3,6 +3,7 @@
  * SDK-free so node tests can import it) and their executors over the bundled
  * catalogs. Weather/spots/journal executors + the dispatcher are further down.
  */
+import dayjs from "dayjs";
 import { PNW_CATALOG } from "../species-catalog.ts";
 import { PLANT_CATALOG } from "../plant-catalog.ts";
 import { OCEAN_CATALOG } from "../ocean-catalog.ts";
@@ -347,8 +348,13 @@ async function getWeatherTool(
   }
   const days = await fetchWeather(lat, lon);
   const reading = computeSporeScore(days);
-  const todayISO = new Date().toISOString().slice(0, 10);
-  const idx = Math.max(0, days.findIndex((d) => d.time === todayISO));
+  // Local date, not UTC: computeSporeScore/fetchWeather anchor on dayjs()'s
+  // local calendar date, and a UTC anchor would start evening US users'
+  // outlook on tomorrow (or, via a findIndex fallback of 0, on past days).
+  const todayISO = dayjs().format("YYYY-MM-DD");
+  let idx = days.findIndex((d) => d.time === todayISO);
+  if (idx < 0) idx = days.findIndex((d) => d.time > todayISO);
+  if (idx < 0) idx = 0;
   return {
     label: input.lat != null ? `${lat.toFixed(3)}, ${lon.toFixed(3)}` : ctx.locationLabel,
     reading,
@@ -396,7 +402,7 @@ function readJournalTool(input: { limit?: number }): unknown[] {
     const raw = localStorage.getItem("mycelium.journal.v1");
     if (!raw) return [];
     const entries: JournalEntry[] = JSON.parse(raw);
-    return entries.slice(0, Math.min(input.limit ?? 10, 25)).map((e) => ({
+    let out = entries.slice(0, Math.min(input.limit ?? 10, 25)).map((e) => ({
       date: e.date,
       species: e.species,
       location: e.location,
@@ -406,6 +412,13 @@ function readJournalTool(input: { limit?: number }): unknown[] {
       conditions: e.weather ?? null,
       // photoDataUrl deliberately excluded: huge base64 blobs
     }));
+    // Aggregate cap: 25 entries with long notes can exceed TOOL_RESULT_CAP
+    // and hit capJson's raw slicer (invalid JSON). Drop trailing (oldest)
+    // entries until the serialized array fits.
+    while (out.length > 1 && JSON.stringify(out).length > TOOL_RESULT_CAP) {
+      out = out.slice(0, -1);
+    }
+    return out;
   } catch {
     return [];
   }
@@ -448,11 +461,20 @@ export async function executeTool(
       // Never raw-slice a species record: ~35 mushroom entries exceed the cap,
       // and a blind slice can land mid-lookalikes — dropping safety-critical
       // content. Shed low-priority fields first; lookalikes/edibility/
-      // toxicityNotes/identification are always kept.
+      // toxicityNotes/cautions/biotoxinNotes are never shed. identification
+      // goes last and only in the extreme case — corrupt JSON would be worse.
       let out = JSON.stringify(detail);
       if (out.length > TOOL_RESULT_CAP) {
         const trimmed: Record<string, unknown> = { ...detail };
-        for (const field of ["sources", "culinary", "hostTrees", "conditions", "habitat"]) {
+        for (const field of [
+          "sources",
+          "culinary",
+          "hostTrees",
+          "conditions",
+          "habitat",
+          "regionsPNW",
+          "identification",
+        ]) {
           if (out.length <= TOOL_RESULT_CAP) break;
           delete trimmed[field];
           out = JSON.stringify(trimmed);

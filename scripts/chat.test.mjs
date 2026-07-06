@@ -300,3 +300,18 @@ test("read_journal returns [] outside the browser and never leaks photos", async
   const out = await executeTool("read_journal", {}, ctx, () => {});
   assert.deepEqual(JSON.parse(out), []);
 });
+
+test("get_species output stays valid JSON with lookalikes under the cap for the largest records", async () => {
+  const ctx = { lat: null, lon: null, locationLabel: "", regionId: "all" };
+  const biggest = PNW_CATALOG
+    .map((s) => ({ id: s.id, len: JSON.stringify(getSpeciesDetail(s.id)).length }))
+    .sort((a, b) => b.len - a.len)
+    .slice(0, 3);
+  for (const { id } of biggest) {
+    const out = await executeTool("get_species", { id }, ctx, () => {});
+    assert.ok(out.length <= 8000, `${id}: ${out.length}`);
+    const parsed = JSON.parse(out); // throws if the fallback slicer corrupted it
+    assert.ok(Array.isArray(parsed.lookalikes), `${id} lost lookalikes`);
+    assert.ok(parsed.edibility, `${id} lost edibility`);
+  }
+});
