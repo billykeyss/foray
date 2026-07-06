@@ -14,6 +14,7 @@
     "check:images": "node --experimental-strip-types scripts/find-dead-images.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.110.0",
     "@radix-ui/react-icons": "^1.3.1",
     "@radix-ui/react-scroll-area": "^1.2.1",
     "@radix-ui/react-select": "^2.1.2",
