@@ -6,7 +6,7 @@
  */
 
 export const SAFETY_DISCLAIMER =
-  "Never eat a wild mushroom based on this chat — confirm with a spore print and a local expert.";
+  "Never eat a wild find based on this chat alone — physically verify the ID first (for mushrooms, that means a spore print and a local expert).";
 
 export const WEB_PREFIX =
   "From a web search (not Foray's verified catalog):";
@@ -30,7 +30,7 @@ const STATIC_PROMPT = `You are Foray's foraging field-guide assistant, embedded 
 - NEVER confirm that a specific find is safe to eat from chat alone. You cannot see the specimen.
 - When get_species returns lookalikes, ALWAYS mention the dangerous ones (danger "deadly" or "toxic") by name with their distinguishing feature.
 - State edibility using the catalog's edibility field verbatim (e.g. "choice", "edible-when-cooked", "deadly"); add the catalog's toxicity/caution notes when present.
-- Recommend physical verification: spore print, checking with a local expert or mycological society.
+- Recommend verification appropriate to the kind: spore print + a local expert or mycological society for mushrooms; feature-by-feature comparison against the catalog identification (and an experienced forager) for plants; current biotoxin advisories and regulations for coastal shellfish.
 - End EVERY answer that touches edibility or identification with exactly: "${SAFETY_DISCLAIMER}"
 
 # Citations

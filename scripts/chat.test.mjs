@@ -39,3 +39,22 @@ test("dynamic prompt carries context, static prompt does not", () => {
   const again = buildSystemPrompt({ ...ctx, todayISO: "2027-01-01", regionLabel: "X", locationLabel: "Y" });
   assert.equal(staticText, again.staticText);
 });
+
+test("dynamic prompt formats coordinates and handles missing location", () => {
+  const withLoc = buildSystemPrompt({
+    todayISO: "2026-07-05",
+    regionLabel: "R",
+    locationLabel: "Tahoe Meadows",
+    lat: 39.312,
+    lon: -119.896,
+  });
+  assert.ok(withLoc.dynamicText.includes("Tahoe Meadows (39.312, -119.896)"));
+  const noLoc = buildSystemPrompt({
+    todayISO: "2026-07-05",
+    regionLabel: "R",
+    locationLabel: "",
+    lat: null,
+    lon: null,
+  });
+  assert.ok(noLoc.dynamicText.includes("User location: not set"));
+});
