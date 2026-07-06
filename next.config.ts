@@ -15,12 +15,17 @@ const nextConfig: NextConfig = {
       // the browser (the chat agent always passes an explicit apiKey), but
       // webpack still resolves them at build time and errors on the "node:"
       // scheme. Strip the scheme and stub the builtins with empty modules.
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        "node:fs": false,
-        "node:path": false,
-        "node:buffer": false,
-      };
+      // NOTE: keep this identical to next.config.js — that file is the one
+      // Next actually loads when both exist; this mirror exists so the fix
+      // survives if next.config.js is ever removed.
+      config.plugins.push(
+        new webpack.NormalModuleReplacementPlugin(
+          /^node:/,
+          (resource: { request: string }) => {
+            resource.request = resource.request.replace(/^node:/, "");
+          }
+        )
+      );
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,

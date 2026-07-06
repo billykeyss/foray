@@ -74,7 +74,7 @@ Dynamic (uncached): today's date, active region label, user location label, unit
 
 ### Persistence — `lib/chat/store.ts`
 
-localStorage under `foray.chat.sessions.v1`: `{id, title (first user message, truncated), createdAt, updatedAt, turns: [{role, text, cards?}]}`. Capped at **30 sessions**, oldest pruned. Active session id in `foray.chat.active.v1`. Quota-safe writes (try/catch like the rest of the app).
+localStorage under `foray.chat.sessions.v1`: `{id, title (first user message, truncated), createdAt, updatedAt, turns: [{role, text, cards?}]}`. Capped at **30 sessions**, oldest pruned. No persisted active-session id — the panel deliberately opens on a fresh compose screen (Keeper UX); reopening a past session goes through History. Quota-safe writes (try/catch like the rest of the app).
 
 ### Errors & edge cases
 

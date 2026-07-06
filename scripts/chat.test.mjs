@@ -328,3 +328,33 @@ test("speciesRoute resolves every mushroom id and real plant/ocean ids", () => {
   assert.equal(speciesRoute("bull-kelp").href, "/ocean/bull-kelp");
   assert.equal(speciesRoute("not-a-real-id"), null);
 });
+
+test("searchCatalog hostTree filter narrows to mushrooms with that host", () => {
+  const pine = searchCatalog({ kind: "mushroom", hostTree: "pine", limit: 10 });
+  assert.ok(pine.length > 0);
+  const all = searchCatalog({ kind: "mushroom", limit: 10 });
+  assert.ok(all.length >= pine.length);
+  // host trees are a mushroom concept: a hostTree query excludes other kinds
+  const cross = searchCatalog({ hostTree: "pine", limit: 10 });
+  assert.ok(cross.every((h) => h.kind === "mushroom"));
+});
+
+test("card payloads carry the fields the card components consume", async () => {
+  const ctx = { lat: null, lon: null, locationLabel: "", regionId: "all" };
+  const cards = [];
+  await executeTool("search_catalog", { query: "chanterelle", kind: "mushroom" }, ctx, (c) => cards.push(c));
+  const hit = cards[0].data[0];
+  for (const k of ["id", "kind", "common", "scientific", "edibility", "thumb"]) {
+    assert.ok(k in hit, `search hit missing ${k}`);
+  }
+  cards.length = 0;
+  await executeTool("get_species", { id: "boletus-edulis" }, ctx, (c) => cards.push(c));
+  const sc = cards[0].data;
+  for (const k of ["id", "kind", "common", "scientific", "edibility", "thumb", "lookalikes"]) {
+    assert.ok(k in sc, `species card missing ${k}`);
+  }
+  assert.ok(sc.lookalikes.length > 0);
+  for (const k of ["name", "danger", "catalogId"]) {
+    assert.ok(k in sc.lookalikes[0], `card lookalike missing ${k}`);
+  }
+});

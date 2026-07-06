@@ -51,6 +51,11 @@ export const TOOL_SCHEMAS = [
             "Filter: 'edible' matches the whole edible family (choice/edible/edible-*); cooked/medicinal variants match across catalog vocabularies",
         },
         month: { type: "number", description: "1-12; only species fruiting/harvestable that month" },
+        hostTree: {
+          type: "string",
+          description:
+            "Host/partner tree filter (mushrooms only), common or scientific name substring, e.g. 'pine' or 'Pinus'",
+        },
         region: {
           type: "string",
           enum: ["sierra-nevada", "pacific-northwest", "california-coast", "great-basin", "all"],
@@ -155,10 +160,12 @@ export function searchCatalog(input: {
   edibility?: string;
   month?: number;
   region?: string;
+  hostTree?: string;
   limit?: number;
 }): CatalogHit[] {
   const limit = Math.min(input.limit ?? 8, 10);
   const q = input.query?.toLowerCase().trim();
+  const ht = input.hostTree?.toLowerCase().trim();
   const terms = regionTerms(input.region);
 
   const pools: { kind: CatalogKind; items: (MushroomSpecies | PlantSpecies | OceanSpecies)[] }[] = [
@@ -182,6 +189,20 @@ export function searchCatalog(input: {
       if (input.edibility && !edibilityMatches(String(s.edibility), input.edibility)) continue;
       if (input.month && !months.includes(input.month)) continue;
       if (terms !== undefined && !speciesInRegions(s, terms)) continue;
+      if (ht) {
+        // Host trees are a mushroom concept; a hostTree query intentionally
+        // excludes plant/ocean species.
+        const trees = "hostTrees" in s ? s.hostTrees : [];
+        if (
+          !trees.some(
+            (t) =>
+              t.common.toLowerCase().includes(ht) ||
+              t.scientific.toLowerCase().includes(ht)
+          )
+        ) {
+          continue;
+        }
+      }
       hits.push({
         id: s.id,
         kind: pool.kind,

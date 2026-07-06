@@ -25,7 +25,6 @@ export interface ChatSession {
 }
 
 const KEY = "foray.chat.sessions.v1";
-export const ACTIVE_KEY = "foray.chat.active.v1";
 export const MAX_SESSIONS = 30;
 export const HISTORY_TURN_CAP = 12;
 
