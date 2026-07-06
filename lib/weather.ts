@@ -239,9 +239,9 @@ export function computeSporeScore(days: DailyWeather[]): SporeReading {
   };
 }
 
-import { PNW_CATALOG } from "./species-catalog";
+import { PNW_CATALOG } from "./species-catalog.ts";
+import { speciesInRegions } from "./region-filter.ts";
 import type { MushroomSpecies } from "./species-types";
-import type { Forageable } from "./forageable";
 
 export type { MushroomSpecies } from "./species-types";
 
@@ -335,19 +335,11 @@ export function suggestSpecies(
   return top.species;
 }
 
-/** Case-insensitive match: any of the entry's regions contains any filter term.
- *  Typed against `Forageable` so mushrooms, trees and plants all reuse it. */
-export function speciesInRegions(
-  s: Pick<Forageable, "regionsPNW">,
-  filterTerms?: string[] | null
-): boolean {
-  if (!filterTerms || filterTerms.length === 0) return true;
-  const hay = s.regionsPNW.map((r) => r.toLowerCase());
-  return filterTerms.some((term) => {
-    const t = term.toLowerCase();
-    return hay.some((h) => h.includes(t));
-  });
-}
+// speciesInRegions now lives in the dependency-free lib/region-filter.ts (so
+// node scripts/tests can use it without the catalog graph). Imported above for
+// internal use and re-exported here — existing callers import it from
+// "@/lib/weather".
+export { speciesInRegions };
 
 /**
  * Top N matches, including weaker ones — used by a "what could be fruiting"

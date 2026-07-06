@@ -8,13 +8,24 @@ import ForecastStrip from "@/components/forecast-strip";
 import LocationChooser from "@/components/location-chooser";
 import SpeciesPhoto from "@/components/species-photo";
 import SpotFinder from "@/components/spot-finder";
+import GreensInSeason from "@/components/greens-in-season";
 import { useLocation } from "@/lib/location-context";
 import { useRegion } from "@/lib/region-context";
 import { computeSporeScore, suggestSpecies, scoreSpecies } from "@/lib/weather";
+import { plantForecaster } from "@/lib/forecast/plant";
 
 export default function TodayPage() {
-  const { weather, loading, error } = useLocation();
+  const { weather, loading, error, lat, lon } = useLocation();
   const { filterTerms } = useRegion();
+
+  const greens = useMemo(
+    () =>
+      plantForecaster.suggest(
+        { weather, now: new Date(), lat: lat ?? 0, lon: lon ?? 0 },
+        filterTerms
+      ),
+    [weather, lat, lon, filterTerms]
+  );
 
   const reading = useMemo(
     () => (weather.length ? computeSporeScore(weather) : null),
@@ -182,6 +193,12 @@ export default function TodayPage() {
           )}
         </div>
       )}
+
+      <GreensInSeason
+        items={greens}
+        title={plantForecaster.title}
+        emptyState={plantForecaster.emptyState}
+      />
 
       {reading && <SpotFinder />}
     </main>
