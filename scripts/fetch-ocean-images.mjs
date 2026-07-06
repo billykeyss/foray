@@ -63,7 +63,7 @@ function cleanDesc(html) {
 }
 
 const JUNK_FILENAME =
-  /bucket|basket|market|for[\s_-]?sale|risotto|\bdish\b|\bplate\b|illustration|distribution|range[\s_-]?map|\bmap\b|stamp|\bcoin\b|\blabel\b|diagram|chart|herbarium|specimen[\s_-]?sheet|logo/i;
+  /bucket|market|for[\s_-]?sale|risotto|\bdish\b|distribution|range[\s_-]?map|\bmap\b|stamp|\bcoin\b|\blabel\b|diagram|chart|herbarium|specimen[\s_-]?sheet|logo|drawing|sketch|painting|engrav|lithograph|watercolo|etching|woodcut|haeckel|kunstformen|\bfig(ure)?[\s_.]*\d|\bplate[\s_]*\d|\bpl\.?[\s_]*\d|illustr|1[6-8]\d\d/i;
 
 const OCEAN_KIND_PATTERNS = [
   ["shell", /shell|valve|carapace|\bcrab\b|claw|test\b/i],
