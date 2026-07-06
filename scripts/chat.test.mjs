@@ -82,3 +82,16 @@ test("parseInline tokenizes species tokens, links, bold, text", () => {
   assert.ok(parts.some((p) => p.kind === "text" && p.text.includes("bad")));
   assert.ok(!parts.some((p) => p.kind === "link" && p.href.startsWith("javascript")));
 });
+
+test("parseInline keeps balanced parens inside link URLs", () => {
+  const parts = parseInline("[Boletus](https://en.wikipedia.org/wiki/Boletus_(genus)) rocks");
+  const link = parts.find((p) => p.kind === "link");
+  assert.equal(link.href, "https://en.wikipedia.org/wiki/Boletus_(genus)");
+  assert.equal(parts[parts.length - 1].text, " rocks");
+});
+
+test("parseInline degrades unclosed tokens to literal text", () => {
+  const parts = parseInline("**unclosed and [half](https://x.co");
+  assert.ok(parts.every((p) => p.kind === "text"));
+  assert.equal(parts.map((p) => p.text).join(""), "**unclosed and [half](https://x.co");
+});

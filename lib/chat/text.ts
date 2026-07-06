@@ -10,8 +10,11 @@ export type InlinePart =
   | { kind: "link"; text: string; href: string }
   | { kind: "species"; id: string };
 
-// Order matters: species token, markdown link, bold.
-const TOKEN = /\[\[species:([a-z0-9-]+)\]\]|\[([^\]]+)\]\(([^)\s]+)\)|\*\*([^*]+)\*\*/g;
+// Order matters: species token, markdown link, bold. Link URLs may contain one
+// level of balanced parens (Wikipedia disambiguation pages). Bold content is
+// NOT re-parsed — a link inside **bold** renders as literal text.
+const TOKEN =
+  /\[\[species:([a-z0-9-]+)\]\]|\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)|\*\*([^*]+)\*\*/g;
 
 export function parseInline(text: string): InlinePart[] {
   const parts: InlinePart[] = [];
