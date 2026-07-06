@@ -13,6 +13,9 @@ import { localImage } from "../image-src.ts";
 import type { MushroomSpecies } from "../species-types";
 import type { PlantSpecies } from "../plant-types";
 import type { OceanSpecies } from "../ocean-types";
+import { fetchWeather, computeSporeScore } from "../weather.ts";
+import { selectCandidates, scoreCandidates } from "../spot-finder.ts";
+import type { JournalEntry } from "../journal.ts";
 
 export type CatalogKind = "mushroom" | "plant" | "ocean";
 
@@ -313,4 +316,166 @@ export function getSpeciesDetail(id: string): SpeciesDetail {
     };
   }
   throw new Error(`No species with id "${id}" in any catalog. Use search_catalog first.`);
+}
+
+export interface ToolContext {
+  lat: number | null;
+  lon: number | null;
+  locationLabel: string;
+  regionId: RegionId;
+}
+
+export interface ToolCard {
+  tool: string;
+  data: unknown;
+}
+
+export function capJson(value: unknown): string {
+  const json = JSON.stringify(value);
+  if (json.length <= TOOL_RESULT_CAP) return json;
+  return json.slice(0, TOOL_RESULT_CAP) + "…[truncated]";
+}
+
+async function getWeatherTool(
+  input: { lat?: number; lon?: number },
+  ctx: ToolContext
+) {
+  const lat = input.lat ?? ctx.lat;
+  const lon = input.lon ?? ctx.lon;
+  if (lat == null || lon == null) {
+    throw new Error("No coordinates: pass lat/lon or have the user set a location.");
+  }
+  const days = await fetchWeather(lat, lon);
+  const reading = computeSporeScore(days);
+  const todayISO = new Date().toISOString().slice(0, 10);
+  const idx = Math.max(0, days.findIndex((d) => d.time === todayISO));
+  return {
+    label: input.lat != null ? `${lat.toFixed(3)}, ${lon.toFixed(3)}` : ctx.locationLabel,
+    reading,
+    outlook: days.slice(idx, idx + 7).map((d) => ({
+      date: d.time,
+      tempMaxC: d.tempMax,
+      tempMinC: d.tempMin,
+      rainMm: d.precipitation,
+      humidityPct: d.humidity,
+    })),
+  };
+}
+
+async function findSpotsTool(
+  input: { maxKm?: number; max?: number },
+  ctx: ToolContext
+) {
+  if (ctx.lat == null || ctx.lon == null) {
+    throw new Error("The user has no location set — ask them to pick one on the map first.");
+  }
+  const candidates = selectCandidates(
+    ctx.lat,
+    ctx.lon,
+    ctx.locationLabel || "here",
+    input.maxKm ?? 250,
+    Math.min(input.max ?? 6, 10)
+  );
+  const scored = await scoreCandidates(candidates);
+  return scored
+    .filter((c) => c.reading)
+    .map((c) => ({
+      name: c.name,
+      lat: c.lat,
+      lon: c.lon,
+      distanceKm: Number(c.distanceKm.toFixed(1)),
+      sporeScore: c.reading!.score,
+      rain7dMm: Number(c.reading!.rain7d.toFixed(0)),
+      daysSinceRain: c.reading!.daysSinceRain,
+    }));
+}
+
+function readJournalTool(input: { limit?: number }): unknown[] {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    const raw = localStorage.getItem("mycelium.journal.v1");
+    if (!raw) return [];
+    const entries: JournalEntry[] = JSON.parse(raw);
+    return entries.slice(0, Math.min(input.limit ?? 10, 25)).map((e) => ({
+      date: e.date,
+      species: e.species,
+      location: e.location,
+      notes: e.notes.length > 500 ? e.notes.slice(0, 500) + "…" : e.notes,
+      lat: e.lat ?? null,
+      lon: e.lon ?? null,
+      conditions: e.weather ?? null,
+      // photoDataUrl deliberately excluded: huge base64 blobs
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Execute one client tool. Returns a JSON string (≤ TOOL_RESULT_CAP chars) and
+ * emits a UI card. Throws on failure — the agent loop converts throws into
+ * is_error tool_results.
+ */
+export async function executeTool(
+  name: string,
+  input: Record<string, unknown>,
+  ctx: ToolContext,
+  onCard: (card: ToolCard) => void
+): Promise<string> {
+  switch (name) {
+    case "search_catalog": {
+      const hits = searchCatalog(input as Parameters<typeof searchCatalog>[0]);
+      onCard({ tool: "search_catalog", data: hits });
+      return capJson(hits);
+    }
+    case "get_species": {
+      const detail = getSpeciesDetail(String(input.id));
+      onCard({
+        tool: "get_species",
+        data: {
+          id: detail.id,
+          kind: detail.kind,
+          common: Array.isArray(detail.common) ? detail.common[0] : detail.common,
+          scientific: detail.scientific,
+          edibility: detail.edibility,
+          thumb:
+            detail.kind === "mushroom" && SPECIES_IMAGES[detail.id]?.thumb
+              ? localImage(SPECIES_IMAGES[detail.id].thumb)
+              : null,
+          lookalikes: detail.lookalikes,
+        },
+      });
+      // Never raw-slice a species record: ~35 mushroom entries exceed the cap,
+      // and a blind slice can land mid-lookalikes — dropping safety-critical
+      // content. Shed low-priority fields first; lookalikes/edibility/
+      // toxicityNotes/identification are always kept.
+      let out = JSON.stringify(detail);
+      if (out.length > TOOL_RESULT_CAP) {
+        const trimmed: Record<string, unknown> = { ...detail };
+        for (const field of ["sources", "culinary", "hostTrees", "conditions", "habitat"]) {
+          if (out.length <= TOOL_RESULT_CAP) break;
+          delete trimmed[field];
+          out = JSON.stringify(trimmed);
+        }
+      }
+      return out.length <= TOOL_RESULT_CAP ? out : capJson(detail);
+    }
+    case "get_weather": {
+      const w = await getWeatherTool(input as { lat?: number; lon?: number }, ctx);
+      onCard({ tool: "get_weather", data: w });
+      return capJson(w);
+    }
+    case "find_spots": {
+      const spots = await findSpotsTool(input as { maxKm?: number; max?: number }, ctx);
+      onCard({ tool: "find_spots", data: spots });
+      return capJson(spots);
+    }
+    case "read_journal": {
+      const entries = readJournalTool(input as { limit?: number });
+      onCard({ tool: "read_journal", data: { count: entries.length } });
+      return capJson(entries);
+    }
+    default:
+      throw new Error(`Unknown tool: ${name}`);
+  }
 }

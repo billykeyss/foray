@@ -6,9 +6,9 @@ import {
   fetchWeather,
   type DailyWeather,
   type SporeReading,
-} from "./weather";
-import { PNW_CATALOG } from "./species-catalog";
-import { speciesInRegions } from "./weather";
+} from "./weather.ts";
+import { PNW_CATALOG } from "./species-catalog.ts";
+import { speciesInRegions } from "./weather.ts";
 
 export interface CandidateSpot {
   name: string;

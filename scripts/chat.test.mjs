@@ -21,6 +21,8 @@ import {
   WEB_SEARCH_TOOL,
   searchCatalog,
   getSpeciesDetail,
+  capJson,
+  executeTool,
 } from "../lib/chat/tools.ts";
 import { PNW_CATALOG } from "../lib/species-catalog.ts";
 
@@ -262,4 +264,39 @@ test("getSpeciesDetail returns plant and ocean safety fields", () => {
   const ocean = getSpeciesDetail("bull-kelp");
   assert.equal(ocean.kind, "ocean");
   assert.ok("biotoxinNotes" in ocean && "regulations" in ocean);
+});
+
+test("capJson truncates at the cap with a marker", () => {
+  const big = { blob: "x".repeat(20000) };
+  const out = capJson(big);
+  assert.ok(out.length <= 8000 + 30);
+  assert.ok(out.endsWith("…[truncated]"));
+  assert.equal(capJson({ a: 1 }), '{"a":1}');
+});
+
+test("executeTool dispatches search_catalog and emits a card", async () => {
+  const cards = [];
+  const ctx = { lat: null, lon: null, locationLabel: "", regionId: "all" };
+  const out = await executeTool(
+    "search_catalog",
+    { query: "chanterelle", kind: "mushroom" },
+    ctx,
+    (c) => cards.push(c)
+  );
+  const parsed = JSON.parse(out);
+  assert.ok(Array.isArray(parsed) && parsed.length > 0);
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].tool, "search_catalog");
+});
+
+test("executeTool rejects unknown tools and find_spots without location", async () => {
+  const ctx = { lat: null, lon: null, locationLabel: "", regionId: "all" };
+  await assert.rejects(() => executeTool("nope", {}, ctx, () => {}), /Unknown tool/);
+  await assert.rejects(() => executeTool("find_spots", {}, ctx, () => {}), /location/i);
+});
+
+test("read_journal returns [] outside the browser and never leaks photos", async () => {
+  const ctx = { lat: null, lon: null, locationLabel: "", regionId: "all" };
+  const out = await executeTool("read_journal", {}, ctx, () => {});
+  assert.deepEqual(JSON.parse(out), []);
 });
