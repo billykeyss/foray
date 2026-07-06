@@ -13,6 +13,7 @@ const tabs = [
   { href: "/catalog", label: "Guide" },
   { href: "/charts", label: "Charts" },
   { href: "/journal", label: "Journal" },
+  { href: "/chat", label: "Ask" },
 ];
 
 // Trees, Greens and Tide live under Guide — reached via the in-page segmented

@@ -9,6 +9,7 @@ const tabs = [
   { href: "/catalog", label: "Guide", icon: BookIcon },
   { href: "/charts", label: "Charts", icon: ChartIcon },
   { href: "/journal", label: "Journal", icon: JournalIcon },
+  { href: "/chat", label: "Ask", icon: AskIcon },
 ];
 
 // /trees, /plants and /ocean live under the Guide tab — toggled via the in-page segmented control
@@ -26,7 +27,7 @@ export default function TabBar() {
         paddingTop: "10px",
       }}
     >
-      <ul className="grid grid-cols-5 px-2">
+      <ul className="grid grid-cols-6 px-2">
         {tabs.map((t) => {
           const active =
             t.href === "/"
@@ -181,6 +182,25 @@ function JournalIcon({ active }: { active: boolean }) {
       aria-hidden
     >
       <path d="M5 4 L19 4 L19 21 L12 18 L5 21 Z" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function AskIcon({ active }: { active: boolean }) {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={active ? 2 : 1.5}
+      aria-hidden
+    >
+      <path d="M21 12a8 8 0 1 1-3.1-6.3L21 4l-1 3.4A8 8 0 0 1 21 12z" strokeLinejoin="round" />
+      <circle cx="9" cy="12" r="0.8" fill="currentColor" />
+      <circle cx="12.5" cy="12" r="0.8" fill="currentColor" />
+      <circle cx="16" cy="12" r="0.8" fill="currentColor" />
     </svg>
   );
 }
