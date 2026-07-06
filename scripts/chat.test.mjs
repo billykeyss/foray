@@ -25,6 +25,7 @@ import {
   executeTool,
 } from "../lib/chat/tools.ts";
 import { PNW_CATALOG } from "../lib/species-catalog.ts";
+import { speciesRoute } from "../lib/chat/species-route.ts";
 
 test("static prompt carries the safety disclaimer verbatim", () => {
   const { staticText } = buildSystemPrompt({
@@ -314,4 +315,16 @@ test("get_species output stays valid JSON with lookalikes under the cap for the 
     assert.ok(Array.isArray(parsed.lookalikes), `${id} lost lookalikes`);
     assert.ok(parsed.edibility, `${id} lost edibility`);
   }
+});
+
+test("speciesRoute resolves every mushroom id and real plant/ocean ids", () => {
+  for (const s of PNW_CATALOG) {
+    const r = speciesRoute(s.id);
+    assert.ok(r, s.id);
+    assert.ok(r.href === `/catalog/${s.id}`, s.id);
+    assert.ok(r.label.length > 0, `${s.id} has empty label`);
+  }
+  assert.equal(speciesRoute("stinging-nettle").href, "/plants/stinging-nettle");
+  assert.equal(speciesRoute("bull-kelp").href, "/ocean/bull-kelp");
+  assert.equal(speciesRoute("not-a-real-id"), null);
 });

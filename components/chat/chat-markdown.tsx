@@ -2,17 +2,7 @@
 
 import Link from "next/link";
 import { parseInline } from "@/lib/chat/text.ts";
-import { PNW_CATALOG } from "@/lib/species-catalog.ts";
-import { PLANT_CATALOG } from "@/lib/plant-catalog.ts";
-import { OCEAN_CATALOG } from "@/lib/ocean-catalog.ts";
-
-function speciesRoute(id: string): { href: string; label: string } | null {
-  const m = PNW_CATALOG.find((s) => s.id === id);
-  if (m) return { href: `/catalog/${id}`, label: m.commonNames[0] };
-  if (PLANT_CATALOG.some((s) => s.id === id)) return { href: `/plants#${id}`, label: id };
-  if (OCEAN_CATALOG.some((s) => s.id === id)) return { href: `/ocean#${id}`, label: id };
-  return null;
-}
+import { speciesRoute } from "@/lib/chat/species-route.ts";
 
 function Inline({ text }: { text: string }) {
   return (
