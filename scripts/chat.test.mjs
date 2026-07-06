@@ -16,6 +16,13 @@ import {
   MAX_SESSIONS,
   HISTORY_TURN_CAP,
 } from "../lib/chat/store.ts";
+import {
+  TOOL_SCHEMAS,
+  WEB_SEARCH_TOOL,
+  searchCatalog,
+  getSpeciesDetail,
+} from "../lib/chat/tools.ts";
+import { PNW_CATALOG } from "../lib/species-catalog.ts";
 
 test("static prompt carries the safety disclaimer verbatim", () => {
   const { staticText } = buildSystemPrompt({
@@ -173,4 +180,58 @@ test("saveSessions swallows quota errors instead of throwing", () => {
   } finally {
     delete globalThis.localStorage;
   }
+});
+
+test("tool schemas: five client tools, unique names, frozen order", () => {
+  const names = TOOL_SCHEMAS.map((t) => t.name);
+  assert.deepEqual(names, [
+    "search_catalog",
+    "get_species",
+    "get_weather",
+    "find_spots",
+    "read_journal",
+  ]);
+  assert.equal(new Set(names).size, names.length);
+  assert.equal(WEB_SEARCH_TOOL.type, "web_search_20260209");
+  assert.equal(WEB_SEARCH_TOOL.max_uses, 3);
+});
+
+test("searchCatalog finds mushrooms by name and respects limit", () => {
+  const hits = searchCatalog({ query: "chanterelle", kind: "mushroom", limit: 5 });
+  assert.ok(hits.length > 0 && hits.length <= 5);
+  assert.ok(hits.every((h) => h.kind === "mushroom"));
+  assert.ok(
+    hits.some(
+      (h) =>
+        h.common.toLowerCase().includes("chanterelle") ||
+        h.scientific.toLowerCase().includes("cantharellus")
+    )
+  );
+  // every id must resolve back into the catalog
+  for (const h of hits) {
+    assert.ok(PNW_CATALOG.some((s) => s.id === h.id));
+  }
+});
+
+test("searchCatalog filters by month and edibility family", () => {
+  const july = searchCatalog({ kind: "mushroom", month: 7, edibility: "edible", limit: 10 });
+  assert.ok(july.length > 0);
+  for (const h of july) {
+    assert.ok(h.months.includes(7));
+    assert.ok(h.edibility === "choice" || h.edibility.startsWith("edible"));
+  }
+});
+
+test("getSpeciesDetail returns mushroom detail with lookalike dangers", () => {
+  const any = PNW_CATALOG.find((s) => s.lookalikes.length > 0);
+  const detail = getSpeciesDetail(any.id);
+  assert.equal(detail.kind, "mushroom");
+  assert.equal(detail.id, any.id);
+  assert.ok(Array.isArray(detail.lookalikes));
+  assert.ok("danger" in detail.lookalikes[0]);
+  assert.equal(detail.edibility, any.edibility);
+});
+
+test("getSpeciesDetail throws a helpful error on unknown id", () => {
+  assert.throws(() => getSpeciesDetail("not-a-real-id"), /No species with id/);
 });
