@@ -7,6 +7,13 @@ import {
   WEB_PREFIX,
 } from "../lib/chat/prompt.ts";
 import { safeHref, parseInline } from "../lib/chat/text.ts";
+import {
+  pruneSessions,
+  createSession,
+  turnsToMessages,
+  MAX_SESSIONS,
+  HISTORY_TURN_CAP,
+} from "../lib/chat/store.ts";
 
 test("static prompt carries the safety disclaimer verbatim", () => {
   const { staticText } = buildSystemPrompt({
@@ -94,4 +101,35 @@ test("parseInline degrades unclosed tokens to literal text", () => {
   const parts = parseInline("**unclosed and [half](https://x.co");
   assert.ok(parts.every((p) => p.kind === "text"));
   assert.equal(parts.map((p) => p.text).join(""), "**unclosed and [half](https://x.co");
+});
+
+test("pruneSessions keeps the newest MAX_SESSIONS by updatedAt", () => {
+  const mk = (i) => ({
+    id: `s${i}`, title: `t${i}`,
+    createdAt: "2026-01-01T00:00:00Z",
+    updatedAt: `2026-01-01T00:00:${String(i).padStart(2, "0")}Z`,
+    turns: [],
+  });
+  const many = Array.from({ length: MAX_SESSIONS + 5 }, (_, i) => mk(i));
+  const pruned = pruneSessions(many);
+  assert.equal(pruned.length, MAX_SESSIONS);
+  assert.equal(pruned[0].id, `s${MAX_SESSIONS + 4}`); // newest first
+});
+
+test("createSession titles from first message, truncated", () => {
+  const s = createSession("x".repeat(100));
+  assert.equal(s.title.length, 48);
+  assert.equal(s.turns.length, 0);
+  assert.ok(s.id.length > 8);
+});
+
+test("turnsToMessages caps history and maps to text messages", () => {
+  const turns = Array.from({ length: 20 }, (_, i) => ({
+    role: i % 2 === 0 ? "user" : "assistant",
+    text: `m${i}`,
+  }));
+  const msgs = turnsToMessages(turns);
+  assert.equal(msgs.length, HISTORY_TURN_CAP);
+  assert.deepEqual(msgs[msgs.length - 1], { role: "assistant", content: "m19" });
+  assert.equal(msgs[0].role, "user"); // must start with a user turn
 });
