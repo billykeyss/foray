@@ -1330,6 +1330,7 @@ git commit -m "feat(chat): hand-rolled safe markdown renderer with species chips
 import Link from "next/link";
 import type { ChatCard } from "@/lib/chat/store.ts";
 import { safeHref } from "@/lib/chat/text.ts";
+import { speciesRoute } from "@/lib/chat/species-route.ts";
 
 const DANGER_COLORS: Record<string, string> = {
   deadly: "#8b1a1a",
@@ -1371,10 +1372,11 @@ interface Hit {
   thumb: string | null;
 }
 
-function speciesHref(hit: { id: string; kind: string }): string {
-  if (hit.kind === "mushroom") return `/catalog/${hit.id}`;
-  if (hit.kind === "plant") return `/plants#${hit.id}`;
-  return `/ocean#${hit.id}`;
+// Route + label resolution is shared with the markdown chips —
+// lib/chat/species-route.ts is the single source of truth (real
+// /plants/[id] and /ocean/[id] routes, not list-page anchors).
+function speciesHref(hit: { id: string }): string {
+  return speciesRoute(hit.id)?.href ?? "/catalog";
 }
 
 function SpeciesRow({ hit }: { hit: Hit }) {
@@ -1422,19 +1424,22 @@ function SpeciesCard({ data }: { data: SpeciesCardData }) {
       {dangerous.length > 0 && (
         <div className="mt-2 rounded border px-2 py-1.5 text-xs" style={{ borderColor: DANGER_COLORS.toxic }}>
           <span className="font-semibold">Dangerous lookalikes: </span>
-          {dangerous.map((l, i) => (
-            <span key={i}>
-              {i > 0 && ", "}
-              {l.catalogId ? (
-                <Link href={`/catalog/${l.catalogId}`} className="underline">
-                  {l.name}
-                </Link>
-              ) : (
-                l.name
-              )}{" "}
-              ({l.danger})
-            </span>
-          ))}
+          {dangerous.map((l, i) => {
+            const route = l.catalogId ? speciesRoute(l.catalogId) : null;
+            return (
+              <span key={i}>
+                {i > 0 && ", "}
+                {route ? (
+                  <Link href={route.href} className="underline">
+                    {l.name}
+                  </Link>
+                ) : (
+                  l.name
+                )}{" "}
+                ({l.danger})
+              </span>
+            );
+          })}
         </div>
       )}
     </Shell>
