@@ -5,7 +5,7 @@
  * The user's key never leaves the browser: same trust model as spot-finder,
  * via anthropic-dangerous-direct-browser-access (dangerouslyAllowBrowser).
  */
-import Anthropic from "@anthropic-ai/sdk";
+import Anthropic, { APIUserAbortError } from "@anthropic-ai/sdk";
 import { buildSystemPrompt, type ChatContext } from "./prompt.ts";
 import {
   TOOL_SCHEMAS,
@@ -27,6 +27,7 @@ export interface RunCallbacks {
 
 export interface RunResult {
   text: string;
+  /** API stop_reason, or "aborted" when the user cancelled mid-stream */
   stopReason: string | null;
   /** true when the loop hit MAX_TOOL_TURNS before end_turn */
   exhausted: boolean;
@@ -95,7 +96,15 @@ export async function runChatTurn(opts: {
       callbacks.onTextDelta(delta);
     });
 
-    const msg = await stream.finalMessage();
+    let msg: Anthropic.Message;
+    try {
+      msg = await stream.finalMessage();
+    } catch (err) {
+      if (err instanceof APIUserAbortError) {
+        return { text, stopReason: "aborted", exhausted: false };
+      }
+      throw err;
+    }
     stopReason = msg.stop_reason;
     messages.push({ role: "assistant", content: msg.content });
 
@@ -109,6 +118,9 @@ export async function runChatTurn(opts: {
     if (msg.stop_reason !== "tool_use") {
       return { text, stopReason, exhausted: false };
     }
+
+    // Final round: don't execute tools whose results the model can never see.
+    if (turn === MAX_TOOL_TURNS - 1) break;
 
     const toolUses = msg.content.filter(
       (b): b is Anthropic.ToolUseBlock => b.type === "tool_use"
