@@ -30,8 +30,21 @@ export const TOOL_SCHEMAS = [
         kind: { type: "string", enum: ["mushroom", "plant", "ocean"], description: "Restrict to one catalog" },
         edibility: {
           type: "string",
+          enum: [
+            "edible",
+            "choice",
+            "edible-with-caution",
+            "edible-when-cooked",
+            "edible-cooked",
+            "inedible",
+            "psychoactive",
+            "medicinal",
+            "medicinal-only",
+            "toxic",
+            "deadly",
+          ],
           description:
-            "Filter: an exact edibility value, or 'edible' for the whole edible family (choice/edible/edible-*)",
+            "Filter: 'edible' matches the whole edible family (choice/edible/edible-*); cooked/medicinal variants match across catalog vocabularies",
         },
         month: { type: "number", description: "1-12; only species fruiting/harvestable that month" },
         region: {
@@ -50,7 +63,13 @@ export const TOOL_SCHEMAS = [
       "Full catalog record for one species id (from search_catalog): identification, edibility, safety notes, dangerous lookalikes, season, habitat, sources.",
     input_schema: {
       type: "object" as const,
-      properties: { id: { type: "string" } },
+      properties: {
+        id: {
+          type: "string",
+          description:
+            "Exact catalog id from a prior search_catalog result (e.g. 'boletus-edulis') — not a common name.",
+        },
+      },
       required: ["id"],
     },
   },
@@ -109,9 +128,16 @@ export interface CatalogHit {
   thumb: string | null;
 }
 
+const EDIBILITY_ALIASES: Record<string, string[]> = {
+  "edible-when-cooked": ["edible-when-cooked", "edible-cooked"],
+  "edible-cooked": ["edible-when-cooked", "edible-cooked"],
+  medicinal: ["medicinal", "medicinal-only"],
+  "medicinal-only": ["medicinal", "medicinal-only"],
+};
+
 function edibilityMatches(value: string, filter: string): boolean {
   if (filter === "edible") return value === "choice" || value.startsWith("edible");
-  return value === filter;
+  return (EDIBILITY_ALIASES[filter] ?? [filter]).includes(value);
 }
 
 function regionTerms(region?: string): string[] | null | undefined {
@@ -137,9 +163,11 @@ export function searchCatalog(input: {
     { kind: "ocean", items: OCEAN_CATALOG },
   ];
 
-  const hits: CatalogHit[] = [];
-  for (const pool of pools) {
-    if (input.kind && pool.kind !== input.kind) continue;
+  function collectPoolHits(
+    pool: { kind: CatalogKind; items: (MushroomSpecies | PlantSpecies | OceanSpecies)[] },
+    cap: number
+  ): CatalogHit[] {
+    const hits: CatalogHit[] = [];
     for (const s of pool.items) {
       const months =
         "fruitingMonths" in s ? s.fruitingMonths : (s as PlantSpecies | OceanSpecies).harvestMonths;
@@ -162,10 +190,27 @@ export function searchCatalog(input: {
             ? localImage(SPECIES_IMAGES[s.id].thumb)
             : null,
       });
-      if (hits.length >= limit) return hits;
+      if (hits.length >= cap) break;
     }
+    return hits;
   }
-  return hits;
+
+  const selected = pools.filter((p) => !input.kind || p.kind === input.kind);
+  const perPool = selected.map((pool) => collectPoolHits(pool, limit));
+  // Round-robin merge so the large mushroom catalog doesn't crowd out
+  // plants/ocean on cross-catalog queries.
+  const merged: CatalogHit[] = [];
+  for (let i = 0; merged.length < limit; i++) {
+    let took = false;
+    for (const hits of perPool) {
+      if (i < hits.length && merged.length < limit) {
+        merged.push(hits[i]);
+        took = true;
+      }
+    }
+    if (!took) break;
+  }
+  return merged;
 }
 
 export type SpeciesDetail = Record<string, unknown> & {
@@ -261,6 +306,7 @@ export function getSpeciesDetail(id: string): SpeciesDetail {
         scientific: l.scientific,
         danger: l.danger,
         distinguishingFeature: l.distinguishingFeature,
+        catalogId: l.catalogId ?? null,
       })),
       culinary: o.culinary,
       sources: o.sources.map((s) => ({ name: s.name, url: s.url })),

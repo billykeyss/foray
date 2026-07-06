@@ -235,3 +235,31 @@ test("getSpeciesDetail returns mushroom detail with lookalike dangers", () => {
 test("getSpeciesDetail throws a helpful error on unknown id", () => {
   assert.throws(() => getSpeciesDetail("not-a-real-id"), /No species with id/);
 });
+
+test("searchCatalog interleaves kinds on cross-catalog queries", () => {
+  const hits = searchCatalog({ month: 7, limit: 9 });
+  const kinds = new Set(hits.map((h) => h.kind));
+  assert.ok(kinds.size >= 2, `expected multiple kinds, got ${[...kinds]}`);
+});
+
+test("searchCatalog edibility aliases work across catalog vocabularies", () => {
+  const cooked = searchCatalog({ kind: "mushroom", edibility: "edible-cooked", limit: 5 });
+  assert.ok(cooked.length > 0);
+  assert.ok(cooked.every((h) => h.edibility === "edible-when-cooked"));
+});
+
+test("searchCatalog region filter narrows results", () => {
+  const all = searchCatalog({ kind: "mushroom", limit: 10 });
+  const coastal = searchCatalog({ kind: "mushroom", region: "california-coast", limit: 10 });
+  assert.ok(coastal.length > 0);
+  assert.ok(all.length >= coastal.length);
+});
+
+test("getSpeciesDetail returns plant and ocean safety fields", () => {
+  const plant = getSpeciesDetail("stinging-nettle");
+  assert.equal(plant.kind, "plant");
+  assert.ok("preparation" in plant && "cautions" in plant);
+  const ocean = getSpeciesDetail("bull-kelp");
+  assert.equal(ocean.kind, "ocean");
+  assert.ok("biotoxinNotes" in ocean && "regulations" in ocean);
+});
