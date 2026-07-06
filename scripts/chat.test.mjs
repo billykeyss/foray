@@ -6,6 +6,7 @@ import {
   SAFETY_DISCLAIMER,
   WEB_PREFIX,
 } from "../lib/chat/prompt.ts";
+import { safeHref, parseInline } from "../lib/chat/text.ts";
 
 test("static prompt carries the safety disclaimer verbatim", () => {
   const { staticText } = buildSystemPrompt({
@@ -57,4 +58,27 @@ test("dynamic prompt formats coordinates and handles missing location", () => {
     lon: null,
   });
   assert.ok(noLoc.dynamicText.includes("User location: not set"));
+});
+
+test("safeHref allows only http(s)", () => {
+  assert.equal(safeHref("https://example.gov/regs"), "https://example.gov/regs");
+  assert.equal(safeHref("http://example.com"), "http://example.com");
+  assert.equal(safeHref("javascript:alert(1)"), null);
+  assert.equal(safeHref("data:text/html,x"), null);
+  assert.equal(safeHref(""), null);
+});
+
+test("parseInline tokenizes species tokens, links, bold, text", () => {
+  const parts = parseInline(
+    "Try **king bolete** [[species:boletus-edulis]] — see [CDFW](https://wildlife.ca.gov) or [bad](javascript:x)."
+  );
+  assert.deepEqual(parts[0], { kind: "text", text: "Try " });
+  assert.deepEqual(parts[1], { kind: "bold", text: "king bolete" });
+  assert.ok(parts.some((p) => p.kind === "species" && p.id === "boletus-edulis"));
+  assert.ok(
+    parts.some((p) => p.kind === "link" && p.href === "https://wildlife.ca.gov" && p.text === "CDFW")
+  );
+  // javascript: link degrades to plain text
+  assert.ok(parts.some((p) => p.kind === "text" && p.text.includes("bad")));
+  assert.ok(!parts.some((p) => p.kind === "link" && p.href.startsWith("javascript")));
 });
