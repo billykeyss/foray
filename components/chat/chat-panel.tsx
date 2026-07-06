@@ -59,8 +59,10 @@ export default function ChatPanel() {
 
   useEffect(() => setSessions(loadSessions()), []);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView();
   }, [active?.turns.length, streamText, streamCards.length]);
+  // Abort any in-flight request if the user navigates away mid-stream.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   function persist(next: ChatSession) {
     setActive(next);
@@ -72,7 +74,7 @@ export default function ChatPanel() {
   }
 
   async function send(text: string) {
-    const trimmed = text.trim();
+    const trimmed = text.trim().slice(0, 2000);
     if (!trimmed || sending || !apiKey) return;
     setError(null);
     setInput("");
@@ -143,6 +145,10 @@ export default function ChatPanel() {
         setKeyDialogOpen(true);
       } else if (anyErr.status === 429) {
         setError("Rate limited by the API — wait a minute and try again.");
+      } else if (typeof anyErr.status === "number" && anyErr.status >= 500) {
+        setError("The API is having trouble — try again in a moment.");
+      } else if (anyErr.status == null) {
+        setError("Network problem — check your connection and try again.");
       } else {
         setError(anyErr.message ?? "Something went wrong.");
       }
@@ -231,6 +237,7 @@ export default function ChatPanel() {
                 className="block w-full rounded border px-3 py-2 text-left text-sm"
                 style={{ borderColor: "var(--line)" }}
                 onClick={() => send(s)}
+                disabled={!online}
               >
                 {s}
               </button>
@@ -260,7 +267,12 @@ export default function ChatPanel() {
             ))}
             {streamText && <ChatMarkdown text={streamText} />}
             {toolNote && (
-              <p className="animate-pulse font-mono text-xs" style={{ color: "var(--ink-soft)" }}>
+              <p
+                role="status"
+                aria-live="polite"
+                className="animate-pulse font-mono text-xs"
+                style={{ color: "var(--ink-soft)" }}
+              >
                 {toolNote}
               </p>
             )}
@@ -284,6 +296,7 @@ export default function ChatPanel() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           maxLength={2000}
+          aria-label="Ask about species, conditions, or spots"
           placeholder={online ? "Ask about species, conditions, spots…" : "Offline — Ask needs a connection"}
           disabled={!online || sending}
         />
