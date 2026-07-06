@@ -1,17 +1,33 @@
 "use client";
 
+import { Component, type ReactNode } from "react";
 import Link from "next/link";
 import type { ChatCard } from "@/lib/chat/store.ts";
 import { safeHref } from "@/lib/chat/text.ts";
 import { speciesRoute } from "@/lib/chat/species-route.ts";
 
+/** Persisted card data can outlive schema changes; one bad card must not
+ * blank the whole chat. Class component because error boundaries can't be
+ * function components. */
+class CardBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
+// deadly/toxic hexes match DangerBadge in components/lookalike-card.tsx.
 const DANGER_COLORS: Record<string, string> = {
-  deadly: "#8b1a1a",
-  toxic: "#b4541e",
+  deadly: "#a02828",
+  toxic: "#c05420",
+  psychoactive: "#7a4a9e",
 };
 
 function edibilityBadge(edibility: string) {
-  const danger = edibility === "deadly" || edibility === "toxic";
+  const danger = edibility in DANGER_COLORS;
   return (
     <span
       className="rounded-full border px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider"
@@ -56,8 +72,7 @@ function SpeciesRow({ hit }: { hit: Hit }) {
   return (
     <Link href={speciesHref(hit)} className="flex items-center gap-2 py-1.5">
       {hit.thumb ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={hit.thumb} alt="" className="h-9 w-9 rounded object-cover" />
+        <img src={hit.thumb} alt="" loading="lazy" width={36} height={36} className="h-9 w-9 rounded object-cover" />
       ) : (
         <span className="h-9 w-9 rounded" style={{ background: "var(--line)" }} />
       )}
@@ -153,7 +168,7 @@ function SpotsCard({ data }: { data: Spot[] }) {
   return (
     <Shell title="Nearby spots">
       {data.slice(0, 6).map((s) => (
-        <div key={s.name} className="flex items-center justify-between py-1 text-sm">
+        <div key={`${s.lat},${s.lon}`} className="flex items-center justify-between py-1 text-sm">
           <Link href="/map" className="truncate underline decoration-dotted">
             {s.name}
           </Link>
@@ -180,7 +195,7 @@ function WebCard({ data }: { data: { title: string; url: string }[] }) {
   );
 }
 
-export default function ChatCardView({ card }: { card: ChatCard }) {
+function CardBody({ card }: { card: ChatCard }) {
   switch (card.tool) {
     case "search_catalog":
       return <SearchCard data={card.data as Hit[]} />;
@@ -195,4 +210,12 @@ export default function ChatCardView({ card }: { card: ChatCard }) {
     default:
       return null; // unknown tools render nothing (forward-compatible, Keeper's pattern)
   }
+}
+
+export default function ChatCardView({ card }: { card: ChatCard }) {
+  return (
+    <CardBoundary>
+      <CardBody card={card} />
+    </CardBoundary>
+  );
 }
