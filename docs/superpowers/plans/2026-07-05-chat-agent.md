@@ -945,7 +945,7 @@ function readJournalTool(input: { limit?: number }): unknown[] {
       date: e.date,
       species: e.species,
       location: e.location,
-      notes: e.notes,
+      notes: e.notes.length > 500 ? e.notes.slice(0, 500) + "…" : e.notes,
       lat: e.lat ?? null,
       lon: e.lon ?? null,
       conditions: e.weather ?? null,
@@ -990,7 +990,20 @@ export async function executeTool(
           lookalikes: detail.lookalikes,
         },
       });
-      return capJson(detail);
+      // Never raw-slice a species record: ~35 mushroom entries exceed the cap,
+      // and a blind slice can land mid-lookalikes — dropping safety-critical
+      // content. Shed low-priority fields first; lookalikes/edibility/
+      // toxicityNotes/identification are always kept.
+      let out = JSON.stringify(detail);
+      if (out.length > TOOL_RESULT_CAP) {
+        const trimmed: Record<string, unknown> = { ...detail };
+        for (const field of ["sources", "culinary", "hostTrees", "conditions", "habitat"]) {
+          if (out.length <= TOOL_RESULT_CAP) break;
+          delete trimmed[field];
+          out = JSON.stringify(trimmed);
+        }
+      }
+      return out.length <= TOOL_RESULT_CAP ? out : capJson(detail);
     }
     case "get_weather": {
       const w = await getWeatherTool(input as { lat?: number; lon?: number }, ctx);
