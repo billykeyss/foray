@@ -115,7 +115,7 @@ Expected: FAIL — `Cannot find module '.../lib/chat/prompt.ts'`
  */
 
 export const SAFETY_DISCLAIMER =
-  "Never eat a wild mushroom based on this chat — confirm with a spore print and a local expert.";
+  "Never eat a wild find based on this chat alone — physically verify the ID first (for mushrooms, that means a spore print and a local expert).";
 
 export const WEB_PREFIX =
   "From a web search (not Foray's verified catalog):";
