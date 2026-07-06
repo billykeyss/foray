@@ -40,6 +40,7 @@ function cleanName(sci) {
     .replace(/\(.*?\)/g, " ")                          // drop parentheticals
     .replace(/\s+(and|&|\/)\s+.*/i, " ")               // first taxon of a combined entry
     .replace(/\b(var\.|ssp\.|subsp\.|syn\.).*$/i, " ") // drop infraspecific / synonym tail
+    .replace(/\bspp?\.?\b/gi, " ")                      // drop "sp."/"spp." so genus-only names query the genus
     .replace(/\s+/g, " ")
     .trim()
     .split(" ")
@@ -64,7 +65,7 @@ function cleanDesc(html) {
 }
 
 const JUNK_FILENAME =
-  /bucket|basket|market|for[\s_-]?sale|risotto|\bdish\b|\bplate\b|illustration|distribution|range[\s_-]?map|\bmap\b|stamp|\bcoin\b|\blabel\b|diagram|chart|herbarium|specimen[\s_-]?sheet/i;
+  /bucket|market|for[\s_-]?sale|risotto|\bdish\b|distribution|range[\s_-]?map|\bmap\b|stamp|\bcoin\b|\blabel\b|diagram|chart|herbarium|specimen[\s_-]?sheet|logo|drawing|sketch|painting|engrav|lithograph|watercolo|etching|woodcut|haeckel|kunstformen|\bfig(ure)?[\s_.]*\d|\bplate[\s_]*\d|\bpl\.?[\s_]*\d|illustr|1[6-8]\d\d/i;
 
 // Plant feature classifier (parallel to gallery.mjs classifyKind for mushrooms).
 const PLANT_KIND_PATTERNS = [
