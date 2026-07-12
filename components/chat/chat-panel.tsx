@@ -8,7 +8,7 @@ import { useOnline } from "@/lib/use-online";
 import ApiKeyDialog from "@/components/api-key-dialog";
 import ChatMarkdown from "@/components/chat/chat-markdown";
 import ChatCardView from "@/components/chat/chat-cards";
-import { runChatTurn, MAX_TOOL_TURNS } from "@/lib/chat/agent.ts";
+import { runChatTurn, MAX_TOOL_TURNS, type ChatAuth } from "@/lib/chat/agent.ts";
 import {
   createSession,
   loadSessions,
@@ -19,6 +19,13 @@ import {
   type ChatTurn,
 } from "@/lib/chat/store.ts";
 import { SAFETY_DISCLAIMER } from "@/lib/chat/prompt.ts";
+import {
+  probeChatProxy,
+  verifyChatPassword,
+  loadChatPassword,
+  saveChatPassword,
+  clearChatPassword,
+} from "@/lib/chat/gate.ts";
 
 const SUGGESTED = [
   "What's fruiting near me this week?",
@@ -38,6 +45,12 @@ const TOOL_LABEL: Record<string, string> = {
 
 type View = "chat" | "history";
 
+type GateState =
+  | { mode: "probing" }
+  | { mode: "password-locked"; error: string | null }
+  | { mode: "password-ready"; password: string }
+  | { mode: "byo" };
+
 export default function ChatPanel() {
   const { apiKey, hasKey, loaded } = useApiKey();
   const { lat, lon, label: locationLabel } = useLocation();
@@ -54,6 +67,8 @@ export default function ChatPanel() {
   const [toolNote, setToolNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [keyDialogOpen, setKeyDialogOpen] = useState(false);
+  const [gate, setGate] = useState<GateState>({ mode: "probing" });
+  const [pwInput, setPwInput] = useState("");
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -63,6 +78,42 @@ export default function ChatPanel() {
   }, [active?.turns.length, streamText, streamCards.length]);
   // Abort any in-flight request if the user navigates away mid-stream.
   useEffect(() => () => abortRef.current?.abort(), []);
+
+  // Probe the Foray server's chat proxy once on mount to pick BYO vs
+  // password-gated mode; re-verify a saved password before trusting it.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const proxyMode = await probeChatProxy();
+      if (cancelled) return;
+      if (proxyMode === "byo-mode") {
+        setGate({ mode: "byo" });
+        return;
+      }
+      const saved = loadChatPassword();
+      if (saved && (await verifyChatPassword(saved))) {
+        if (!cancelled) setGate({ mode: "password-ready", password: saved });
+      } else {
+        clearChatPassword();
+        if (!cancelled) setGate({ mode: "password-locked", error: null });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function unlock(pw: string) {
+    const trimmed = pw.trim();
+    if (!trimmed) return;
+    if (await verifyChatPassword(trimmed)) {
+      saveChatPassword(trimmed);
+      setGate({ mode: "password-ready", password: trimmed });
+      setPwInput("");
+    } else {
+      setGate({ mode: "password-locked", error: "Wrong password (or rate-limited — wait a minute)." });
+    }
+  }
 
   function persist(next: ChatSession) {
     setActive(next);
@@ -75,7 +126,13 @@ export default function ChatPanel() {
 
   async function send(text: string) {
     const trimmed = text.trim().slice(0, 2000);
-    if (!trimmed || sending || !apiKey) return;
+    const auth: ChatAuth | null =
+      gate.mode === "password-ready"
+        ? { kind: "password", password: gate.password }
+        : hasKey && apiKey
+          ? { kind: "byo", apiKey }
+          : null;
+    if (!trimmed || sending || !auth) return;
     setError(null);
     setInput("");
 
@@ -98,7 +155,7 @@ export default function ChatPanel() {
 
     try {
       const result = await runChatTurn({
-        apiKey,
+        auth,
         messages: turnsToMessages(withUser.turns) as Parameters<typeof runChatTurn>[0]["messages"],
         context: {
           todayISO: new Date().toISOString().slice(0, 10),
@@ -141,8 +198,13 @@ export default function ChatPanel() {
     } catch (err: unknown) {
       const anyErr = err as { status?: number; message?: string };
       if (anyErr.status === 401) {
-        setError("Your API key was rejected — check it in Settings.");
-        setKeyDialogOpen(true);
+        if (gate.mode === "password-ready") {
+          clearChatPassword();
+          setGate({ mode: "password-locked", error: "Chat password no longer valid — enter it again." });
+        } else {
+          setError("Your API key was rejected — check it in Settings.");
+          setKeyDialogOpen(true);
+        }
       } else if (anyErr.status === 429) {
         setError("Rate limited by the API — wait a minute and try again.");
       } else if (typeof anyErr.status === "number" && anyErr.status >= 500) {
@@ -163,7 +225,41 @@ export default function ChatPanel() {
 
   if (!loaded) return null;
 
-  if (!hasKey) {
+  if (gate.mode === "probing") return null;
+
+  if (gate.mode === "password-locked") {
+    return (
+      <div className="p-6 text-center">
+        <p className="mb-3 text-sm">This chat runs on the house API key — enter the chat password.</p>
+        <form
+          className="mx-auto flex max-w-xs gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            unlock(pwInput);
+          }}
+        >
+          <input
+            type="password"
+            className="min-w-0 flex-1 rounded border px-3 py-2 text-sm"
+            style={{ borderColor: "var(--line)", background: "transparent" }}
+            value={pwInput}
+            onChange={(e) => setPwInput(e.target.value)}
+            aria-label="Chat password"
+            maxLength={200}
+          />
+          <button type="submit" className="rounded border px-4 text-sm" style={{ borderColor: "var(--line)" }}>
+            Unlock
+          </button>
+        </form>
+        {gate.error && <p className="mt-2 text-sm text-red-700">{gate.error}</p>}
+        <button className="mt-4 text-xs underline" onClick={() => setGate({ mode: "byo" })}>
+          Use your own API key instead
+        </button>
+      </div>
+    );
+  }
+
+  if (gate.mode === "byo" && !hasKey) {
     return (
       <div className="p-6 text-center">
         <p className="mb-3 text-sm">
@@ -222,6 +318,18 @@ export default function ChatPanel() {
           <button className="underline" onClick={() => setView("history")} disabled={sending}>
             History
           </button>
+          {gate.mode === "password-ready" && (
+            <button
+              className="underline"
+              onClick={() => {
+                clearChatPassword();
+                setGate({ mode: "password-locked", error: null });
+              }}
+              disabled={sending}
+            >
+              Lock
+            </button>
+          )}
         </div>
       </div>
 

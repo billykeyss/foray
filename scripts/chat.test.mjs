@@ -387,6 +387,16 @@ test("verifyChatPassword true only on 204", async () => {
   assert.equal(await verifyChatPassword("pw", async () => { throw new Error("net"); }), false);
 });
 
+test("probeChatProxy never sends the password header (probe must stay free)", async () => {
+  let sawHeader = false;
+  await probeChatProxy(async (_url, init) => {
+    const h = new Headers(init?.headers);
+    if (h.has("x-foray-password")) sawHeader = true;
+    return new Response(null, { status: 401 });
+  });
+  assert.equal(sawHeader, false);
+});
+
 test("password persistence is localStorage-guarded", () => {
   assert.equal(loadChatPassword(), null); // no localStorage in node
   const backing = new Map();

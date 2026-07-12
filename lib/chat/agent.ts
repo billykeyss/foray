@@ -19,6 +19,26 @@ import { safeHref } from "./text.ts";
 export const CHAT_MODEL = "claude-sonnet-5";
 export const MAX_TOOL_TURNS = 8;
 
+export type ChatAuth =
+  | { kind: "byo"; apiKey: string }
+  | { kind: "password"; password: string };
+
+/** BYO mode talks to Anthropic directly (key stays in this browser).
+ *  Password mode talks to the Foray server's proxy, which injects the
+ *  server-held key; the placeholder apiKey below never reaches Anthropic
+ *  (the proxy strips it). */
+function makeClient(auth: ChatAuth): Anthropic {
+  if (auth.kind === "byo") {
+    return new Anthropic({ apiKey: auth.apiKey, dangerouslyAllowBrowser: true });
+  }
+  return new Anthropic({
+    apiKey: "proxied",
+    baseURL: `${window.location.origin}/api/chat/proxy`,
+    defaultHeaders: { "x-foray-password": auth.password },
+    dangerouslyAllowBrowser: true,
+  });
+}
+
 export interface RunCallbacks {
   onTextDelta: (delta: string) => void;
   onToolNote: (toolName: string) => void;
@@ -55,7 +75,7 @@ function extractWebResults(content: Anthropic.ContentBlock[]): WebResult[] {
 }
 
 export async function runChatTurn(opts: {
-  apiKey: string;
+  auth: ChatAuth;
   /** Full conversation for this request, ending with the new user message. */
   messages: Anthropic.MessageParam[];
   context: ChatContext;
@@ -63,8 +83,8 @@ export async function runChatTurn(opts: {
   signal: AbortSignal;
   callbacks: RunCallbacks;
 }): Promise<RunResult> {
-  const { apiKey, messages, context, toolContext, signal, callbacks } = opts;
-  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+  const { auth, messages, context, toolContext, signal, callbacks } = opts;
+  const client = makeClient(auth);
 
   const { staticText, dynamicText } = buildSystemPrompt(context);
   const system: Anthropic.TextBlockParam[] = [
