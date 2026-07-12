@@ -24,6 +24,7 @@ const CONTENT_TYPES: Record<string, string> = {
   ".js": "text/javascript",
   ".css": "text/css",
   ".json": "application/json",
+  ".geojson": "application/geo+json",
   ".webmanifest": "application/manifest+json",
   ".png": "image/png",
   ".jpg": "image/jpeg",

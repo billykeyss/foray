@@ -185,6 +185,15 @@ test("rate limit returns 429 and counts failed password attempts", async () => {
   assert.equal(second.status, 429);
 });
 
+test("unauthenticated probe does not consume rate-limit budget", async () => {
+  let calls = 0;
+  const app = fixtureApp({}, { limiter: { allow: () => { calls++; return true; }, reset() {} } });
+  await app.request("/api/chat/auth/check"); // no password header
+  assert.equal(calls, 0);
+  await app.request("/api/chat/auth/check", { headers: { "x-foray-password": "guess" } });
+  assert.equal(calls, 1);
+});
+
 test("proxy route maps upstream network failure to 502 json", async () => {
   const app = fixtureApp({}, {
     upstreamFetch: async () => { throw new TypeError("fetch failed"); },
