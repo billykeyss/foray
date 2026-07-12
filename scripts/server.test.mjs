@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { readConfig } from "../server/config.ts";
 import { safeEqual } from "../server/auth.ts";
+import { createLimiter } from "../server/rate-limit.ts";
 
 test("readConfig reads env with defaults and null-for-missing secrets", () => {
   const cfg = readConfig({ PORT: "5000", ANTHROPIC_API_KEY: "sk-x", FORAY_CHAT_PASSWORD: "pw" });
@@ -30,4 +31,15 @@ test("safeEqual is correct on equal/unequal/length-mismatch", () => {
   assert.equal(safeEqual("secret", "secreT"), false);
   assert.equal(safeEqual("secret", "secret-longer"), false);
   assert.equal(safeEqual("", ""), true);
+});
+
+test("limiter enforces per-IP and global sliding windows", () => {
+  const lim = createLimiter({ windowMs: 60_000, perIpMax: 2, globalMax: 3 });
+  let t = 1_000_000;
+  assert.equal(lim.allow("a", t), true);
+  assert.equal(lim.allow("a", t + 1), true);
+  assert.equal(lim.allow("a", t + 2), false); // per-IP cap
+  assert.equal(lim.allow("b", t + 3), true);
+  assert.equal(lim.allow("c", t + 4), false); // global cap (3 recorded)
+  assert.equal(lim.allow("a", t + 61_000), true); // window expired
 });
