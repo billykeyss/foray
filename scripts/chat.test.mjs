@@ -26,6 +26,13 @@ import {
 } from "../lib/chat/tools.ts";
 import { PNW_CATALOG } from "../lib/species-catalog.ts";
 import { speciesRoute } from "../lib/chat/species-route.ts";
+import {
+  probeChatProxy,
+  verifyChatPassword,
+  loadChatPassword,
+  saveChatPassword,
+  clearChatPassword,
+} from "../lib/chat/gate.ts";
 
 test("static prompt carries the safety disclaimer verbatim", () => {
   const { staticText } = buildSystemPrompt({
@@ -356,5 +363,44 @@ test("card payloads carry the fields the card components consume", async () => {
   assert.ok(sc.lookalikes.length > 0);
   for (const k of ["name", "danger", "catalogId"]) {
     assert.ok(k in sc.lookalikes[0], `card lookalike missing ${k}`);
+  }
+});
+
+test("probeChatProxy maps statuses to modes", async () => {
+  const mk = (status) => async () => new Response(null, { status });
+  assert.equal(await probeChatProxy(mk(401)), "password-mode");
+  assert.equal(await probeChatProxy(mk(204)), "password-mode");
+  assert.equal(await probeChatProxy(mk(503)), "byo-mode"); // proxy exists but unconfigured → fall back
+  assert.equal(await probeChatProxy(mk(404)), "byo-mode"); // Render / no server
+  assert.equal(await probeChatProxy(async () => { throw new Error("net"); }), "byo-mode");
+});
+
+test("verifyChatPassword true only on 204", async () => {
+  let sent;
+  const ok = await verifyChatPassword("pw", async (url, init) => {
+    sent = init.headers["x-foray-password"];
+    return new Response(null, { status: 204 });
+  });
+  assert.equal(ok, true);
+  assert.equal(sent, "pw");
+  assert.equal(await verifyChatPassword("pw", async () => new Response(null, { status: 401 })), false);
+  assert.equal(await verifyChatPassword("pw", async () => { throw new Error("net"); }), false);
+});
+
+test("password persistence is localStorage-guarded", () => {
+  assert.equal(loadChatPassword(), null); // no localStorage in node
+  const backing = new Map();
+  globalThis.localStorage = {
+    getItem: (k) => (backing.has(k) ? backing.get(k) : null),
+    setItem: (k, v) => backing.set(k, String(v)),
+    removeItem: (k) => backing.delete(k),
+  };
+  try {
+    saveChatPassword("hunter2");
+    assert.equal(loadChatPassword(), "hunter2");
+    clearChatPassword();
+    assert.equal(loadChatPassword(), null);
+  } finally {
+    delete globalThis.localStorage;
   }
 });
