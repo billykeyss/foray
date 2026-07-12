@@ -69,6 +69,7 @@ export default function ChatPanel() {
   const [keyDialogOpen, setKeyDialogOpen] = useState(false);
   const [gate, setGate] = useState<GateState>({ mode: "probing" });
   const [pwInput, setPwInput] = useState("");
+  const [unlocking, setUnlocking] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -105,13 +106,18 @@ export default function ChatPanel() {
 
   async function unlock(pw: string) {
     const trimmed = pw.trim();
-    if (!trimmed) return;
-    if (await verifyChatPassword(trimmed)) {
-      saveChatPassword(trimmed);
-      setGate({ mode: "password-ready", password: trimmed });
-      setPwInput("");
-    } else {
-      setGate({ mode: "password-locked", error: "Wrong password (or rate-limited — wait a minute)." });
+    if (!trimmed || unlocking) return;
+    setUnlocking(true);
+    try {
+      if (await verifyChatPassword(trimmed)) {
+        saveChatPassword(trimmed);
+        setGate({ mode: "password-ready", password: trimmed });
+        setPwInput("");
+      } else {
+        setGate({ mode: "password-locked", error: "Wrong password (or rate-limited — wait a minute)." });
+      }
+    } finally {
+      setUnlocking(false);
     }
   }
 
@@ -230,7 +236,11 @@ export default function ChatPanel() {
   if (gate.mode === "password-locked") {
     return (
       <div className="p-6 text-center">
-        <p className="mb-3 text-sm">This chat runs on the house API key — enter the chat password.</p>
+        {online ? (
+          <p className="mb-3 text-sm">This chat runs on the house API key — enter the chat password.</p>
+        ) : (
+          <p className="mb-3 text-sm">Offline — reconnect to unlock the chat.</p>
+        )}
         <form
           className="mx-auto flex max-w-xs gap-2"
           onSubmit={(e) => {
@@ -246,9 +256,15 @@ export default function ChatPanel() {
             onChange={(e) => setPwInput(e.target.value)}
             aria-label="Chat password"
             maxLength={200}
+            disabled={unlocking || !online}
           />
-          <button type="submit" className="rounded border px-4 text-sm" style={{ borderColor: "var(--line)" }}>
-            Unlock
+          <button
+            type="submit"
+            className="rounded border px-4 text-sm"
+            style={{ borderColor: "var(--line)" }}
+            disabled={unlocking || !online}
+          >
+            {unlocking ? "…" : "Unlock"}
           </button>
         </form>
         {gate.error && <p className="mt-2 text-sm text-red-700">{gate.error}</p>}
