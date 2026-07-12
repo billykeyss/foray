@@ -20,7 +20,11 @@ On the Mac mini:
    --version`. This is a hard requirement, not just a recommendation: the
    server runs directly from TypeScript via `node --experimental-strip-types
    server/index.ts` (no build step, no `tsx`), and that flag doesn't exist on
-   older Node.
+   older Node. The supervisor script resolves `node` from the PATH at launch
+   and falls back to Homebrew paths; if you use a version manager
+   (nvm/volta/asdf), either `brew install node` for the service account or add
+   your node's bin directory to the plist's PATH so launchd can find it at
+   boot.
 2. **pnpm**, via corepack (ships with Node) — `corepack enable` makes `pnpm`
    resolve to the version pinned by the repo's `pnpm-lock.yaml`. Don't
    `brew install pnpm` separately; a mismatched global pnpm can produce a

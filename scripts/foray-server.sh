@@ -9,6 +9,10 @@
 #   Attach to watch logs:  tmux attach -t foray   (detach: Ctrl-b then d)
 #   Stop the server:       tmux kill-session -t foray
 #
+# Crash-restarts happen in the --serve loop inside the tmux pane; the loop
+# process stays named foray-server.sh, so killing the node server never kills
+# the supervisor.
+#
 # Env: PORT (default 4245), FORAY_TMUX_SESSION (default "foray").
 # Secrets (ANTHROPIC_API_KEY, FORAY_CHAT_PASSWORD) live in ~/.config/foray/env
 # (chmod 600), sourced inside the pane.
@@ -19,8 +23,10 @@ PORT="${PORT:-4245}"
 SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# launchd provides a minimal PATH; make sure Homebrew tmux/node are findable.
-export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+# launchd provides a minimal PATH. Prepend Homebrew and the directory of the
+# node currently on PATH (covers nvm/volta/asdf installs, not just Homebrew).
+NODE_DIR="$(command -v node 2>/dev/null | xargs -r dirname || true)"
+export PATH="${NODE_DIR:+$NODE_DIR:}/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 if [[ "${1:-}" == "--serve" ]]; then
   # Supervisor loop, running inside the tmux pane.
