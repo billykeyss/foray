@@ -1,6 +1,7 @@
 /** In-memory sliding-window limiter (single-process server, mirrors keeper
- *  src/api/chat.ts). Counts every gated request — including failed password
- *  attempts — so it also brute-force-limits the gate. */
+ *  src/api/chat.ts). Requests that clear the limiter are recorded whether or
+ *  not the password check then succeeds, so failed password attempts consume
+ *  the window and the gate is brute-force-limited to perIpMax attempts/min. */
 export interface Limiter {
   allow(ip: string, now?: number): boolean;
   reset(): void;
