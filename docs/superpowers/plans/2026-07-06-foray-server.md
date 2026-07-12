@@ -259,7 +259,73 @@ export async function proxyMessages(
 
 ### Task 5: Static resolution + app wiring — `server/static.ts`, `server/index.ts`
 
-**Files:** Create: `server/static.ts`, `server/index.ts`; Test: `scripts/server.test.mjs` (append)
+**Files:** Create: `server/static.ts`, `server/index.ts`; Modify: `server/proxy.ts` (rider); Test: `scripts/server.test.mjs` (append)
+
+**Rider from Task 4's review (apply to `server/proxy.ts` in this task's commit):**
+
+1. Body-size cap. Add after `ANTHROPIC_URL`:
+
+```ts
+/** Cap buffered request bodies — a malicious password-holder shouldn't be
+ *  able to feed the single-process server gigabyte POSTs. */
+export const MAX_BODY_BYTES = 2_000_000;
+```
+
+At the top of `proxyMessages`, before building headers:
+
+```ts
+  const tooLarge = new Response(JSON.stringify({ error: "request too large" }), {
+    status: 413,
+    headers: { "content-type": "application/json" },
+  });
+  const declared = Number(req.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) return tooLarge;
+```
+
+And after `const body = await req.text();`: `if (body.length > MAX_BODY_BYTES) return tooLarge.clone();`
+
+2. Response-header passthrough. Replace the content-type-only response header block with:
+
+```ts
+  /** Non-sensitive upstream headers worth passing back: content-type for the
+   *  stream parser, retry-after* so the SDK's backoff honors Anthropic's
+   *  hints, request-id for debuggability. */
+  const PASSTHROUGH = [
+    "content-type",
+    "request-id",
+    "retry-after",
+    "retry-after-ms",
+  ];
+  const respHeaders = new Headers();
+  for (const name of PASSTHROUGH) {
+    const value = upstream.headers.get(name);
+    if (value) respHeaders.set(name, value);
+  }
+  return new Response(upstream.body, { status: upstream.status, headers: respHeaders });
+```
+
+3. Rider tests (append with the other proxy tests):
+
+```js
+test("proxyMessages caps oversized bodies and passes back retry/request-id headers", async () => {
+  const big = new Request("http://x/", {
+    method: "POST",
+    headers: { "content-type": "application/json", "content-length": String(2_000_001) },
+    body: "{}",
+  });
+  const res413 = await proxyMessages(big, "sk", async () => new Response("{}"));
+  assert.equal(res413.status, 413);
+  const req = new Request("http://x/", { method: "POST", body: "{}" });
+  const upstream = new Response("{}", {
+    status: 429,
+    headers: { "content-type": "application/json", "retry-after": "7", "request-id": "req_123" },
+  });
+  const res = await proxyMessages(req, "sk", async () => upstream);
+  assert.equal(res.status, 429);
+  assert.equal(res.headers.get("retry-after"), "7");
+  assert.equal(res.headers.get("request-id"), "req_123");
+});
+```
 
 - [ ] **Step 1: Append failing tests** (pure candidates fn + full app via `app.request()` with a temp fixture dir):
 
@@ -439,6 +505,8 @@ export function buildApp(cfg: ServerConfig, deps: AppDeps = {}): Hono {
   const gate: MiddlewareHandler = async (c, next) => {
     if (!cfg.apiKey || !cfg.password) return c.json({ error: "chat not configured" }, 503);
     const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || "local";
+    // Global cap can briefly starve a fresh IP while others are busy —
+    // accepted trade-off (Keeper's) for a small tailnet audience.
     if (!limiter.allow(ip)) return c.json({ error: "rate limited" }, 429);
     const got = c.req.header("x-foray-password") ?? "";
     if (!safeEqual(got, cfg.password)) return c.json({ error: "unauthorized" }, 401);
@@ -446,9 +514,15 @@ export function buildApp(cfg: ServerConfig, deps: AppDeps = {}): Hono {
   };
 
   app.get("/api/chat/auth/check", gate, (c) => c.body(null, 204));
-  app.post("/api/chat/proxy/v1/messages", gate, (c) =>
-    proxyMessages(c.req.raw, cfg.apiKey as string, deps.upstreamFetch)
-  );
+  app.post("/api/chat/proxy/v1/messages", gate, async (c) => {
+    try {
+      return await proxyMessages(c.req.raw, cfg.apiKey as string, deps.upstreamFetch);
+    } catch {
+      // Upstream network failure — keep the API's JSON error shape and avoid
+      // Hono's default plaintext 500 + stack-trace console spam.
+      return c.json({ error: "upstream unreachable" }, 502);
+    }
+  });
   app.all("/api/*", (c) => c.json({ error: "not found" }, 404));
   app.get("*", (c) => serveStatic(cfg.outDir, new URL(c.req.url).pathname));
   return app;
