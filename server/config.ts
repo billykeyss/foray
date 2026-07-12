@@ -14,7 +14,7 @@ export interface ServerConfig {
 export function readConfig(env: Record<string, string | undefined> = process.env): ServerConfig {
   const here = path.dirname(fileURLToPath(import.meta.url));
   return {
-    port: Number(env.PORT) || 4245,
+    port: env.PORT !== undefined && Number.isFinite(Number(env.PORT)) ? Number(env.PORT) : 4245,
     apiKey: env.ANTHROPIC_API_KEY || null,
     password: env.FORAY_CHAT_PASSWORD || null,
     outDir: env.FORAY_OUT_DIR || path.resolve(here, "..", "out"),
