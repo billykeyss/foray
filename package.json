@@ -7,6 +7,7 @@
     "build": "next build --no-lint && node scripts/build-sw.mjs",
     "start": "next start -p 1245",
     "lint": "next lint",
+    "server": "node --experimental-strip-types server/index.ts",
     "test": "node --test --experimental-strip-types",
     "localize:images": "node scripts/localize-images.mjs",
     "data:burns": "node scripts/fetch-burns.mjs",
