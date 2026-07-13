@@ -63,3 +63,8 @@ export function suggestPlants(
       href: `/plants/${p.id}`,
     }));
 }
+
+/** Whether any edible plant occurs in the region (ignoring season). */
+export function plantRegionCoverage(regionTerms: string[] | null): boolean {
+  return EDIBLE_PLANTS.some((p) => speciesInRegions(p, regionTerms));
+}

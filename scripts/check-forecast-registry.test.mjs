@@ -11,8 +11,8 @@ const warm = (n, t) =>
   }));
 const env = { weather: warm(7, 12), now: new Date(2026, 4, 15), lat: 39.3, lon: -120.2 };
 
-test("registry has mushroom and plant forecasters, in that order", () => {
-  assert.deepEqual(REGISTRY.map((f) => f.kind), ["mushroom", "plant"]);
+test("registry has mushroom, plant and shellfish forecasters, in that order", () => {
+  assert.deepEqual(REGISTRY.map((f) => f.kind), ["mushroom", "plant", "shellfish"]);
 });
 
 test("every forecaster carries a title, emptyState and suggest()", () => {

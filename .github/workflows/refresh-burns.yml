@@ -1,0 +1,59 @@
+name: Refresh wildfire perimeters
+
+# Keeps the map's burn overlay fresh. Weekly, re-fetch NIFC fire perimeters and,
+# if they changed, open (or update) a single PR with the new public/data/burns.geojson.
+# Nothing goes live automatically — you review and merge, which is what deploys.
+#
+# One-time setup: Settings → Actions → General → Workflow permissions →
+# enable "Allow GitHub Actions to create and approve pull requests".
+# This workflow only runs once it lives on the default branch (main).
+
+on:
+  schedule:
+    - cron: "0 14 * * 1" # Mondays 14:00 UTC (~6–7am Pacific)
+  workflow_dispatch: {} # allow manual runs from the Actions tab
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # fetch-burns.mjs uses only Node built-ins + global fetch — no install needed.
+      - name: Fetch latest fire perimeters
+        run: node scripts/fetch-burns.mjs
+
+      - name: Open a PR if the data changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if git diff --quiet -- public/data/burns.geojson; then
+            echo "Burn perimeters unchanged — nothing to do."
+            exit 0
+          fi
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          branch="automated/burns-refresh"
+          git checkout -B "$branch"
+          git add public/data/burns.geojson
+          git commit -m "chore(data): refresh wildfire perimeters"
+          git push --force origin "$branch"
+
+          open=$(gh pr list --head "$branch" --state open --json number --jq 'length')
+          if [ "$open" = "0" ]; then
+            gh pr create --base main --head "$branch" \
+              --title "chore(data): refresh wildfire perimeters" \
+              --body "Automated weekly refresh of NIFC fire perimeters for the map's burn overlay (\`public/data/burns.geojson\`). Review and merge to publish. The morel-window coloring is computed at render time, so it stays correct regardless of when this last ran."
+          else
+            echo "PR already open for $branch — force-push updated it."
+          fi

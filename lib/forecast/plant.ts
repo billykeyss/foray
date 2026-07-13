@@ -1,4 +1,4 @@
-import { suggestPlants } from "../plant-season.ts";
+import { suggestPlants, plantRegionCoverage } from "../plant-season.ts";
 import type { Forecaster } from "./types";
 
 export const plantForecaster: Forecaster = {
@@ -6,4 +6,5 @@ export const plantForecaster: Forecaster = {
   title: "Greens & fruit in season",
   emptyState: "Nothing's in season here right now — wild greens return in spring.",
   suggest: (env, regionTerms) => suggestPlants(env, regionTerms),
+  hasRegionCoverage: (regionTerms) => plantRegionCoverage(regionTerms),
 };

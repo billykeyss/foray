@@ -8,24 +8,32 @@ import ForecastStrip from "@/components/forecast-strip";
 import LocationChooser from "@/components/location-chooser";
 import SpeciesPhoto from "@/components/species-photo";
 import SpotFinder from "@/components/spot-finder";
-import GreensInSeason from "@/components/greens-in-season";
+import ForageSection from "@/components/forage-section";
 import { useLocation } from "@/lib/location-context";
 import { useRegion } from "@/lib/region-context";
 import { computeSporeScore, suggestSpecies, scoreSpecies } from "@/lib/weather";
-import { plantForecaster } from "@/lib/forecast/plant";
+import { REGISTRY } from "@/lib/forecast/registry";
 
 export default function TodayPage() {
   const { weather, loading, error, lat, lon } = useLocation();
   const { filterTerms } = useRegion();
 
-  const greens = useMemo(
-    () =>
-      plantForecaster.suggest(
-        { weather, now: new Date(), lat: lat ?? 0, lon: lon ?? 0 },
-        filterTerms
-      ),
-    [weather, lat, lon, filterTerms]
-  );
+  // Non-mushroom forecasters (plants, shellfish) surface as their own sections
+  // beside the spore gauge. Hide a section entirely when its kind doesn't occur
+  // in the selected region; show its empty state only when it does but nothing's
+  // in season now.
+  const sections = useMemo(() => {
+    const env = { weather, now: new Date(), lat: lat ?? 0, lon: lon ?? 0 };
+    return REGISTRY
+      .filter((f) => f.kind !== "mushroom")
+      .filter((f) => f.hasRegionCoverage?.(filterTerms) ?? true)
+      .map((f) => ({
+        key: f.kind,
+        title: f.title,
+        emptyState: f.emptyState,
+        items: f.suggest(env, filterTerms),
+      }));
+  }, [weather, lat, lon, filterTerms]);
 
   const reading = useMemo(
     () => (weather.length ? computeSporeScore(weather) : null),
@@ -194,11 +202,9 @@ export default function TodayPage() {
         </div>
       )}
 
-      <GreensInSeason
-        items={greens}
-        title={plantForecaster.title}
-        emptyState={plantForecaster.emptyState}
-      />
+      {sections.map((s) => (
+        <ForageSection key={s.key} items={s.items} title={s.title} emptyState={s.emptyState} />
+      ))}
 
       {reading && <SpotFinder />}
     </main>

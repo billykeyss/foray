@@ -61,6 +61,17 @@ const serwist = new Serwist({
       }),
     },
     {
+      // LANDFIRE forest/vegetation-type WMS tiles — cache what the user has
+      // panned over so the forest overlay works partially offline.
+      matcher: ({ url }) => url.hostname === "edcintl.cr.usgs.gov",
+      handler: new CacheFirst({
+        cacheName: "foray-forest",
+        plugins: [
+          new ExpirationPlugin({ maxEntries: 800, maxAgeSeconds: 60 * 60 * 24 * 30, purgeOnQuotaError: true }),
+        ],
+      }),
+    },
+    {
       matcher: ({ url }) => url.hostname === "api.anthropic.com",
       handler: new NetworkOnly(),
     },

@@ -22,8 +22,8 @@ const CURRENT =
 // Western US bbox: roughly CA / OR / WA / NV / ID / MT / WY / UT / CO / AZ / NM
 const BBOX = { xmin: -125, ymin: 31, xmax: -103, ymax: 49 };
 
-const NOW_YEAR = new Date("2026-06-18").getUTCFullYear();
-const YEARS = [NOW_YEAR - 2, NOW_YEAR - 1, NOW_YEAR]; // 2024, 2025, 2026
+const NOW_YEAR = new Date().getUTCFullYear();
+const YEARS = [NOW_YEAR - 2, NOW_YEAR - 1, NOW_YEAR]; // rolling 3 fire years
 const MIN_ACRES = 500;
 const PAGE = 1000;
 

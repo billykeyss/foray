@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { classifyBurn } from "@/lib/burn-window";
 
 interface Props {
   lat: number | null;
@@ -36,15 +37,13 @@ const PIN_HTML = `
 </style>
 `;
 
-// Year → fill colour. 2024/25 (1–2 years old) are prime morel years —
-// keep them prominent. 2026 is fresh, useful for "where is it currently
-// burning" context but no morels yet.
-const BURN_STYLE: Record<number, { fill: string; stroke: string; fillOp: number }> = {
-  2024: { fill: "#7d3418", stroke: "#7d3418", fillOp: 0.32 }, // rust-deep — prime
-  2025: { fill: "#bd7a12", stroke: "#bd7a12", fillOp: 0.42 }, // chanterelle — peak
-  2026: { fill: "#9a3a2a", stroke: "#9a3a2a", fillOp: 0.18 }, // cinnabar — fresh
-};
-const BURN_STYLE_DEFAULT = { fill: "#7d3418", stroke: "#7d3418", fillOp: 0.25 };
+// LANDFIRE Existing Vegetation Type (2023, CONUS) — a public, CORS-enabled WMS.
+// Online-only intel (like the burn layer); the service worker caches viewed
+// tiles for partial offline. CONUS-only, so it won't cover BC. Note the layer
+// name is the exact (case-sensitive) published name; the lowercase alias in the
+// capabilities is a non-renderable group.
+const FOREST_WMS = "https://edcintl.cr.usgs.gov/geoserver/landfire/wms";
+const FOREST_LAYER = "LF2023_EVT_CONUS";
 
 let burnsCache: any | null = null;
 async function loadBurns(): Promise<any> {
@@ -55,15 +54,19 @@ async function loadBurns(): Promise<any> {
   return burnsCache;
 }
 
+const esc = (s: string) => s.replace(/[<>]/g, "");
+
 export default function ForageMap({ lat, lon, onSelect }: Props) {
   const elRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markerRef = useRef<any>(null);
   const burnLayerRef = useRef<any>(null);
+  const forestLayerRef = useRef<any>(null);
 
   const [showBurns, setShowBurns] = useState(false);
   const [burnCount, setBurnCount] = useState<number | null>(null);
   const [burnsLoading, setBurnsLoading] = useState(false);
+  const [showForest, setShowForest] = useState(false);
 
   // Load Leaflet once
   useEffect(() => {
@@ -141,7 +144,8 @@ export default function ForageMap({ lat, lon, onSelect }: Props) {
     mapRef.current.setView(pos, mapRef.current.getZoom(), { animate: true });
   }, [lat, lon]);
 
-  // Burn perimeter layer — load on first toggle, add/remove on toggle
+  // Burn perimeter layer — load on first toggle, add/remove on toggle.
+  // Age → morel window is decided by classifyBurn (current-year-relative).
   useEffect(() => {
     if (!mapRef.current || !window.L) return;
     const L = window.L;
@@ -150,12 +154,9 @@ export default function ForageMap({ lat, lon, onSelect }: Props) {
 
     const apply = async () => {
       if (!showBurns) {
-        if (burnLayerRef.current) {
-          map.removeLayer(burnLayerRef.current);
-        }
+        if (burnLayerRef.current) map.removeLayer(burnLayerRef.current);
         return;
       }
-      // building the layer
       if (!burnLayerRef.current) {
         setBurnsLoading(true);
         try {
@@ -163,36 +164,26 @@ export default function ForageMap({ lat, lon, onSelect }: Props) {
           if (cancelled) return;
           const layer = L.geoJSON(data, {
             style: (f: any) => {
-              const y = Number(f?.properties?.year);
-              const s = BURN_STYLE[y] ?? BURN_STYLE_DEFAULT;
-              return {
-                color: s.stroke,
-                weight: 1,
-                fillColor: s.fill,
-                fillOpacity: s.fillOp,
-              };
+              const c = classifyBurn(Number(f?.properties?.year), new Date());
+              return { color: c.color, weight: 1, fillColor: c.color, fillOpacity: c.fillOpacity };
             },
             onEachFeature: (f: any, lyr: any) => {
               const p = f.properties || {};
-              const name = String(p.name || "Unnamed fire").replace(/[<>]/g, "");
+              const name = esc(String(p.name || "Unnamed fire"));
               const year = p.year ?? "?";
-              const acres = p.acres
-                ? Number(p.acres).toLocaleString() + " ac"
-                : "—";
-              const ageYrs = Number(p.year)
-                ? Math.max(0, 2026 - Number(p.year))
-                : null;
-              const morelHint =
-                ageYrs === 1 || ageYrs === 2
-                  ? '<span style="color:#bd7a12;font-weight:600">★ prime morel window</span>'
-                  : ageYrs === 0
-                    ? '<span style="opacity:0.75">too fresh for morels</span>'
-                    : '<span style="opacity:0.75">past peak morel window</span>';
+              const acres = p.acres ? Number(p.acres).toLocaleString() + " ac" : "—";
+              const c = classifyBurn(Number(p.year), new Date());
+              const since =
+                c.springsSince <= 0
+                  ? "burned this year"
+                  : `${c.springsSince} spring${c.springsSince === 1 ? "" : "s"} since burn`;
+              const hintColor = c.window === "prime" ? "#bd7a12" : "inherit";
+              const hintWeight = c.window === "prime" ? "600" : "400";
               lyr.bindPopup(
                 `<div style="font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size:11px; line-height:1.6;">
                    <div style="font-family: Newsreader, Spectral, Georgia, serif; font-size:16px; font-weight:500; letter-spacing:-0.01em;">${name}</div>
-                   <div style="opacity:0.7; letter-spacing:0.08em; text-transform:uppercase; margin-top:2px;">${year} · ${acres}</div>
-                   <div style="margin-top:6px;">${morelHint}</div>
+                   <div style="opacity:0.7; letter-spacing:0.08em; text-transform:uppercase; margin-top:2px;">${year} · ${acres} · ${since}</div>
+                   <div style="margin-top:6px; color:${hintColor}; font-weight:${hintWeight};">${c.label}</div>
                  </div>`,
               );
             },
@@ -206,9 +197,7 @@ export default function ForageMap({ lat, lon, onSelect }: Props) {
           setBurnsLoading(false);
         }
       }
-      if (burnLayerRef.current) {
-        burnLayerRef.current.addTo(map);
-      }
+      if (burnLayerRef.current) burnLayerRef.current.addTo(map);
     };
 
     apply();
@@ -217,70 +206,74 @@ export default function ForageMap({ lat, lon, onSelect }: Props) {
     };
   }, [showBurns]);
 
+  // Forest / vegetation-type overlay — LANDFIRE EVT WMS, added/removed on toggle.
+  useEffect(() => {
+    if (!mapRef.current || !window.L) return;
+    const L = window.L;
+    const map = mapRef.current;
+
+    if (!showForest) {
+      if (forestLayerRef.current) map.removeLayer(forestLayerRef.current);
+      return;
+    }
+    if (!forestLayerRef.current) {
+      forestLayerRef.current = L.tileLayer.wms(FOREST_WMS, {
+        layers: FOREST_LAYER,
+        format: "image/png",
+        transparent: true,
+        version: "1.3.0",
+        opacity: 0.5,
+        attribution: "Vegetation: LANDFIRE 2023 EVT · USGS",
+      });
+    }
+    forestLayerRef.current.addTo(map);
+  }, [showForest]);
+
+  const nowYear = new Date().getFullYear();
+
   return (
     <>
       <div
         ref={elRef}
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: "var(--parchment-deep)",
-        }}
+        style={{ position: "absolute", inset: 0, background: "var(--parchment-deep)" }}
       />
 
-      {/* Burn-perimeter toggle (top-right) */}
-      <button
-        type="button"
-        onClick={() => setShowBurns((v) => !v)}
-        className="font-mono"
-        style={{
-          position: "absolute",
-          top: 12,
-          right: 12,
-          zIndex: 1000,
-          padding: "8px 12px",
-          background: showBurns ? "var(--rust)" : "rgba(250,245,233,0.94)",
-          color: showBurns ? "#faf5e9" : "var(--ink)",
-          border: showBurns
-            ? "1px solid var(--rust-deep)"
-            : "1px solid var(--line)",
-          borderRadius: 999,
-          fontSize: 10,
-          letterSpacing: "0.18em",
-          textTransform: "uppercase",
-          cursor: "pointer",
-          boxShadow: "0 2px 8px -2px rgba(44,38,32,0.25)",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-        }}
-        aria-pressed={showBurns}
-      >
-        <span
-          style={{
-            display: "inline-block",
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background: showBurns ? "#faf5e9" : "var(--rust)",
-            opacity: burnsLoading ? 0.4 : 1,
-          }}
+      {/* Layer toggles (top-right, stacked) */}
+      <div style={{ position: "absolute", top: 12, right: 12, zIndex: 1000, display: "flex", flexDirection: "column", gap: 8 }}>
+        <LayerToggle
+          on={showBurns}
+          onColor="var(--rust)"
+          onBorder="var(--rust-deep)"
+          dot="var(--rust)"
+          busy={burnsLoading}
+          onClick={() => setShowBurns((v) => !v)}
+          label={
+            burnsLoading
+              ? "Loading burns…"
+              : showBurns
+                ? `Burns ON${burnCount != null ? ` · ${burnCount}` : ""}`
+                : "Show burns"
+          }
         />
-        {burnsLoading
-          ? "Loading burns…"
-          : showBurns
-            ? `Burns ON${burnCount != null ? ` · ${burnCount}` : ""}`
-            : "Show burns"}
-      </button>
+        <LayerToggle
+          on={showForest}
+          onColor="var(--moss)"
+          onBorder="var(--moss-mid)"
+          dot="var(--moss)"
+          busy={false}
+          onClick={() => setShowForest((v) => !v)}
+          label={showForest ? "Forest ON" : "Forest type"}
+        />
+      </div>
 
-      {/* Burn legend (only when on) */}
-      {showBurns && !burnsLoading && burnCount != null && burnCount > 0 && (
+      {/* Combined legend (bottom-left) */}
+      {(showForest || (showBurns && !burnsLoading && (burnCount ?? 0) > 0)) && (
         <div
           className="font-mono"
           style={{
             position: "absolute",
-            top: 56,
-            right: 12,
+            bottom: 16,
+            left: 12,
             zIndex: 1000,
             padding: "10px 14px",
             background: "rgba(250,245,233,0.94)",
@@ -291,60 +284,114 @@ export default function ForageMap({ lat, lon, onSelect }: Props) {
             color: "var(--ink-soft)",
             lineHeight: 1.6,
             boxShadow: "0 2px 8px -2px rgba(44,38,32,0.18)",
+            maxWidth: 210,
           }}
         >
-          <div
-            style={{
-              fontSize: 9,
-              letterSpacing: "0.22em",
-              textTransform: "uppercase",
-              opacity: 0.7,
-              marginBottom: 6,
-            }}
-          >
-            Wildfire perimeters
-          </div>
-          {[2024, 2025, 2026].map((y) => {
-            const s = BURN_STYLE[y];
-            const age = 2026 - y;
-            const note =
-              age === 1 || age === 2 ? "morel window" : age === 0 ? "fresh" : "";
-            return (
-              <div
-                key={y}
-                style={{ display: "flex", alignItems: "center", gap: 8 }}
-              >
-                <span
-                  style={{
-                    width: 14,
-                    height: 10,
-                    background: s.fill,
-                    opacity: s.fillOp + 0.35,
-                    border: `1px solid ${s.stroke}`,
-                    borderRadius: 2,
-                  }}
-                />
-                <span>{y}</span>
-                {note && (
-                  <span style={{ opacity: 0.65, fontStyle: "italic" }}>
-                    {note}
-                  </span>
-                )}
+          {showBurns && (burnCount ?? 0) > 0 && (
+            <div style={{ marginBottom: showForest ? 10 : 0 }}>
+              <LegendHead>Wildfire perimeters</LegendHead>
+              {([nowYear - 1, nowYear - 2, nowYear] as number[]).map((y) => {
+                const c = classifyBurn(y, new Date());
+                return (
+                  <div key={y} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      style={{
+                        width: 14,
+                        height: 10,
+                        background: c.color,
+                        opacity: c.fillOpacity + 0.35,
+                        border: `1px solid ${c.color}`,
+                        borderRadius: 2,
+                        flex: "none",
+                      }}
+                    />
+                    <span>{y}</span>
+                    <span style={{ opacity: 0.65, fontStyle: "italic" }}>{c.legend}</span>
+                  </div>
+                );
+              })}
+              <div style={{ marginTop: 6, opacity: 0.55, fontSize: 8.5, letterSpacing: "0.1em" }}>
+                ≥500 ac · NIFC
               </div>
-            );
-          })}
-          <div
-            style={{
-              marginTop: 6,
-              opacity: 0.55,
-              fontSize: 8.5,
-              letterSpacing: "0.1em",
-            }}
-          >
-            ≥500 ac · NIFC
-          </div>
+            </div>
+          )}
+          {showForest && (
+            <div>
+              <LegendHead>Forest &amp; vegetation type</LegendHead>
+              <div style={{ opacity: 0.8 }}>
+                Greens = forest / conifer · tans = shrub &amp; grass.
+              </div>
+              <div style={{ marginTop: 6, opacity: 0.55, fontSize: 8.5, letterSpacing: "0.1em" }}>
+                LANDFIRE 2023 EVT · US only
+              </div>
+            </div>
+          )}
         </div>
       )}
     </>
+  );
+}
+
+function LegendHead({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: 9, letterSpacing: "0.22em", textTransform: "uppercase", opacity: 0.7, marginBottom: 6 }}>
+      {children}
+    </div>
+  );
+}
+
+function LayerToggle({
+  on,
+  onColor,
+  onBorder,
+  dot,
+  busy,
+  onClick,
+  label,
+}: {
+  on: boolean;
+  onColor: string;
+  onBorder: string;
+  dot: string;
+  busy: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="font-mono"
+      aria-pressed={on}
+      style={{
+        padding: "8px 12px",
+        background: on ? onColor : "rgba(250,245,233,0.94)",
+        color: on ? "#faf5e9" : "var(--ink)",
+        border: on ? `1px solid ${onBorder}` : "1px solid var(--line)",
+        borderRadius: 999,
+        fontSize: 10,
+        letterSpacing: "0.18em",
+        textTransform: "uppercase",
+        cursor: "pointer",
+        boxShadow: "0 2px 8px -2px rgba(44,38,32,0.25)",
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <span
+        style={{
+          display: "inline-block",
+          width: 8,
+          height: 8,
+          borderRadius: "50%",
+          background: on ? "#faf5e9" : dot,
+          opacity: busy ? 0.4 : 1,
+          flex: "none",
+        }}
+      />
+      {label}
+    </button>
   );
 }
