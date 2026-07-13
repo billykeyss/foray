@@ -1,25 +1,18 @@
 # Foray Deployment
 
-Foray ships from one codebase to two deployments. Both serve the same static
-export (`out/`, built by `pnpm build`); they differ in who holds secrets and
-which chat mode users get. The chat picks its mode at runtime by probing
-`/api/chat/auth/check` — no build flags.
+Foray now ships from one codebase to a single deployment: the Mac mini. Render
+was retired (`render.yaml` deleted; nothing else depended on it) once the mini
+took over public traffic for `foray.billhuang.me` and `mushroom.billhuang.me`
+via a dedicated Cloudflare Tunnel — the same pattern used for
+`sno.billhuang.me`/`sesh.billhuang.me` on this machine.
 
-| | Render (public) | Mac mini (private) |
-| --- | --- | --- |
-| URL | https://foray.billhuang.me | `http://<mini>:4245` (LAN / Tailscale) |
-| Serves | `out/` via Render's static CDN | `out/` via the Foray server (`server/index.ts`) |
-| Chat mode | Bring-your-own-key (key in the visitor's browser only) | Password-gated proxy (server-held Anthropic key; key never reaches browsers) |
-| Secrets | none | `~/.config/foray/env` (chmod 600): `ANTHROPIC_API_KEY`, `FORAY_CHAT_PASSWORD` |
-| Deploys when | push to `main` (`render.yaml`, `autoDeploy: true`; PR previews enabled) | manual: `git pull && pnpm install && pnpm build`, restart the service |
-
-## Render (public site)
-
-- `render.yaml` builds with **pnpm** (corepack + `pnpm-lock.yaml`) and publishes `out/`.
-- **Pushing `main` deploys production.** Run `npm test` and `pnpm build` locally first.
-- There is no server here: the chat probe 404s, so the chat falls back to
-  BYO-key mode automatically. Nothing on Render needs configuration.
-- Retiring Render = delete `render.yaml`; nothing else depends on it.
+| | Mac mini |
+| --- | --- |
+| URL | https://foray.billhuang.me, https://mushroom.billhuang.me (public, via Cloudflare Tunnel `foray`) — also reachable on LAN/Tailscale at `http://<mini>:4245` |
+| Serves | `out/` via the Foray server (`server/index.ts`) |
+| Chat mode | Password-gated proxy (server-held Anthropic key; key never reaches browsers) |
+| Secrets | `~/.config/foray/env` (chmod 600): `ANTHROPIC_API_KEY`, `FORAY_CHAT_PASSWORD` |
+| Deploys when | `com.foray.autodeploy` polls `origin/main` every 60s and rebuilds+restarts on change |
 
 ## Mac mini (Foray server)
 
@@ -28,11 +21,23 @@ the password-gated streaming proxy to `api.anthropic.com`. Full setup —
 prerequisites, env file, tmux supervisor, launchd — lives in
 [`deploy-mac-mini.md`](./deploy-mac-mini.md).
 
+Four launchd agents run this stack:
+
+- `com.foray.server` — RunAtLoad, hosts the app in tmux session `foray` on `:4245`.
+- `com.foray.tunnel` — RunAtLoad + KeepAlive, runs `cloudflared tunnel run` with a
+  dedicated token (`~/.cloudflared/foray.token`), exposing `foray.billhuang.me`
+  and `mushroom.billhuang.me` publicly without any router port-forward.
+- `com.foray.autodeploy` — polls `origin/main` every 60s; on a new commit, runs
+  `pnpm install && pnpm build`, restarts the tmux session, and only records the
+  deployed SHA once a health check passes (`scripts/autodeploy.sh`).
+- `com.foray.watchdog` — every 120s, repairs a missing tmux session, a wedged
+  local server, or a wedged tunnel (`scripts/watchdog.sh`).
+
 Day-to-day:
 
 ```bash
-# update
-cd ~/foray && git pull && pnpm install && pnpm build
+# update (automatic via com.foray.autodeploy; manual if you want it now)
+cd ~/projects/foray && git pull && pnpm install && pnpm build
 tmux kill-session -t foray && scripts/foray-server.sh
 
 # watch logs            tmux attach -t foray     (detach: Ctrl-b d)
@@ -40,13 +45,17 @@ tmux kill-session -t foray && scripts/foray-server.sh
 # rotate the API key    same file, same restart
 ```
 
-Recommended: set a **workspace spend cap** in the Anthropic console for the
-server key — the rate limiter (10 req/min/IP, 30 global) bounds abuse, the cap
-bounds the bill.
+**Security note:** unlike the original Tailscale-only design in
+[`deploy-mac-mini.md`](./deploy-mac-mini.md), the Cloudflare Tunnel exposes the
+chat proxy to the open internet, not just the tailnet — the password gate and
+rate limiter (10 req/min/IP, 30 global) are the only things standing between a
+leaked password and your Anthropic bill. Set a **workspace spend cap** in the
+Anthropic console for the server key; the rate limiter bounds abuse, the cap
+bounds the damage if it's ever bypassed.
 
-## Photos (both deployments)
+## Photos
 
-Photos are not in git and not part of either deploy. They live in the public
+Photos are not in git and not part of the deploy. They live in the public
 GCS bucket `gs://foray-field-guide/img`, referenced by generated URL maps in
 `lib/local-images.ts`.
 
@@ -72,4 +81,5 @@ images change, before pushing the regenerated `.ts` maps.
 1. `npm test` — all suites green.
 2. `npx tsc --noEmit` — clean.
 3. `pnpm build` — static export + service worker build succeed.
-4. Push `main` → Render deploys itself. Mini: pull/build/restart per above.
+4. Push `main` → `com.foray.autodeploy` picks it up within 60s, or run the
+   manual update steps above.

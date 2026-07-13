@@ -102,3 +102,4 @@ tree-*.png
 # Offline photos: staged locally, hosted in GCS (gs://foray-field-guide), not committed
 .image-staging/
 .cache/
+scripts/.autodeploy_sha
