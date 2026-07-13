@@ -149,8 +149,16 @@ export async function scoreCandidates(
   return out;
 }
 
+/** Mirrors lib/chat/agent.ts's ChatAuth, duplicated rather than imported —
+ *  agent.ts pulls in @anthropic-ai/sdk and touches `window`, and must stay
+ *  out of this file's import graph (tools.ts imports this file and is
+ *  exercised by scripts/chat.test.mjs under plain node). */
+export type SpotFinderAuth =
+  | { kind: "byo"; apiKey: string }
+  | { kind: "password"; password: string };
+
 interface AnalyzeOpts {
-  apiKey: string;
+  auth: SpotFinderAuth;
   candidates: CandidateSpot[];
   regionLabel: string;
   regionFilterTerms: string[] | null;
@@ -186,7 +194,7 @@ interface AnthropicMessageResponse {
  * and ask for a ranked recommendation with reasoning.
  */
 export async function analyzeSpotsWithClaude({
-  apiKey,
+  auth,
   candidates,
   regionLabel,
   regionFilterTerms,
@@ -307,14 +315,27 @@ Call the \`report_spots\` tool with the top ${topN} spots, ranked best-first.
     },
   };
 
-  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+  // BYO mode talks to Anthropic directly (key stays in this browser).
+  // Password mode talks to the Foray server's proxy, which injects the
+  // server-held key; this browser never sees or sends a real Anthropic key.
+  const url =
+    auth.kind === "byo"
+      ? "https://api.anthropic.com/v1/messages"
+      : `${window.location.origin}/api/chat/proxy/v1/messages`;
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "anthropic-version": "2023-06-01",
+  };
+  if (auth.kind === "byo") {
+    headers["x-api-key"] = auth.apiKey;
+    headers["anthropic-dangerous-direct-browser-access"] = "true";
+  } else {
+    headers["x-foray-password"] = auth.password;
+  }
+
+  const resp = await fetch(url, {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true",
-    },
+    headers,
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
       max_tokens: 2048,
@@ -326,7 +347,11 @@ Call the \`report_spots\` tool with the top ${topN} spots, ranked best-first.
 
   if (!resp.ok) {
     const body = await resp.text();
-    throw new Error(`Claude API ${resp.status}: ${body.slice(0, 200)}`);
+    const err = new Error(`Claude API ${resp.status}: ${body.slice(0, 200)}`) as Error & {
+      status?: number;
+    };
+    err.status = resp.status;
+    throw err;
   }
   const data = (await resp.json()) as AnthropicMessageResponse;
 

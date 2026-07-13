@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useApiKey } from "@/lib/api-key-context";
 import { useLocation } from "@/lib/location-context";
 import { useRegion } from "@/lib/region-context";
@@ -11,10 +11,26 @@ import {
   type AnalyzeResult,
   type CandidateSpot,
   type RankedSpot,
+  type SpotFinderAuth,
 } from "@/lib/spot-finder";
 import ApiKeyDialog from "@/components/api-key-dialog";
+import {
+  probeChatProxy,
+  verifyChatPassword,
+  loadChatPassword,
+  saveChatPassword,
+  clearChatPassword,
+} from "@/lib/chat/gate.ts";
 
 type Phase = "idle" | "gathering" | "analyzing" | "done" | "error";
+
+// Same shared gate as ChatPanel — one password unlocks both features, since
+// they hit the same server-side proxy and localStorage key.
+type GateState =
+  | { mode: "probing" }
+  | { mode: "password-locked"; error: string | null }
+  | { mode: "password-ready"; password: string }
+  | { mode: "byo" };
 
 export default function SpotFinder() {
   const { hasKey, apiKey, loaded } = useApiKey();
@@ -29,9 +45,59 @@ export default function SpotFinder() {
   const [showRaw, setShowRaw] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [gate, setGate] = useState<GateState>({ mode: "probing" });
+  const [pwInput, setPwInput] = useState("");
+  const [unlocking, setUnlocking] = useState(false);
+
+  // Probe the Foray server's chat proxy once on mount to pick BYO vs
+  // password-gated mode; re-verify a saved password before trusting it.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const proxyMode = await probeChatProxy();
+      if (cancelled) return;
+      if (proxyMode === "byo-mode") {
+        setGate({ mode: "byo" });
+        return;
+      }
+      const saved = loadChatPassword();
+      if (saved && (await verifyChatPassword(saved))) {
+        if (!cancelled) setGate({ mode: "password-ready", password: saved });
+      } else {
+        clearChatPassword();
+        if (!cancelled) setGate({ mode: "password-locked", error: null });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function unlock(pw: string) {
+    const trimmed = pw.trim();
+    if (!trimmed || unlocking) return;
+    setUnlocking(true);
+    try {
+      if (await verifyChatPassword(trimmed)) {
+        saveChatPassword(trimmed);
+        setGate({ mode: "password-ready", password: trimmed });
+        setPwInput("");
+      } else {
+        setGate({ mode: "password-locked", error: "Wrong password (or rate-limited — wait a minute)." });
+      }
+    } finally {
+      setUnlocking(false);
+    }
+  }
 
   const run = async () => {
-    if (!apiKey || lat == null || lon == null) return;
+    const auth: SpotFinderAuth | null =
+      gate.mode === "password-ready"
+        ? { kind: "password", password: gate.password }
+        : hasKey && apiKey
+          ? { kind: "byo", apiKey }
+          : null;
+    if (!auth || lat == null || lon == null) return;
     setError(null);
     setSpots([]);
     setConsidered([]);
@@ -52,7 +118,7 @@ export default function SpotFinder() {
       setPhase("analyzing");
       setProgress(`Asking Claude about ${viable.length} spots…`);
       const result = await analyzeSpotsWithClaude({
-        apiKey,
+        auth,
         candidates: viable,
         regionLabel: regionDef.label,
         regionFilterTerms: filterTerms,
@@ -63,7 +129,12 @@ export default function SpotFinder() {
       setPhase("done");
       setProgress("");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Unknown error");
+      const anyErr = e as { status?: number; message?: string };
+      if (anyErr.status === 401 && gate.mode === "password-ready") {
+        clearChatPassword();
+        setGate({ mode: "password-locked", error: "Chat password no longer valid — enter it again." });
+      }
+      setError(anyErr.message ?? "Unknown error");
       setPhase("error");
     }
   };
@@ -152,7 +223,70 @@ export default function SpotFinder() {
       </div>
 
       <div className="mt-5">
-        {!hasKey ? (
+        {gate.mode === "probing" ? null : gate.mode === "password-locked" ? (
+          <div>
+            <form
+              className="flex gap-2"
+              style={{ maxWidth: 280 }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                unlock(pwInput);
+              }}
+            >
+              <input
+                type="password"
+                value={pwInput}
+                onChange={(e) => setPwInput(e.target.value)}
+                aria-label="Chat password"
+                maxLength={200}
+                disabled={unlocking}
+                className="font-body min-w-0 flex-1"
+                style={{
+                  borderRadius: 100,
+                  border: "1px solid var(--line)",
+                  background: "transparent",
+                  padding: "8px 14px",
+                  fontSize: 13,
+                  color: "var(--ink)",
+                }}
+              />
+              <button
+                type="submit"
+                disabled={unlocking}
+                className="btn-primary"
+                style={{ width: "auto" }}
+              >
+                {unlocking ? "…" : "Unlock"}
+              </button>
+            </form>
+            {gate.error && (
+              <div
+                className="font-body mt-2"
+                style={{ fontSize: 13, color: "var(--rust-deep)" }}
+              >
+                {gate.error}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setGate({ mode: "byo" })}
+              className="font-mono mt-2"
+              style={{
+                background: "transparent",
+                border: 0,
+                padding: 0,
+                fontSize: 10,
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+                color: "var(--ink-soft)",
+                textDecoration: "underline",
+                cursor: "pointer",
+              }}
+            >
+              Use your own API key instead
+            </button>
+          </div>
+        ) : gate.mode === "byo" && !hasKey ? (
           <button
             type="button"
             onClick={() => setShowSettings(true)}
