@@ -98,10 +98,14 @@ export default function ForageMap({ lat, lon, onSelect }: Props) {
         attributionControl: true,
       }).setView(start, 11);
 
+      // Esri Light Gray Canvas: keyless. (Carto's light_nolabels started
+      // serving "API KEY REQUIRED" placeholder tiles in Oct 2026.) Native
+      // tiles stop at z16; Leaflet upscales beyond that.
       L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}@2x.png",
+        "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
         {
-          attribution: "© OpenStreetMap · CARTO",
+          attribution: "Tiles © Esri — Esri, HERE, Garmin, © OpenStreetMap contributors",
+          maxNativeZoom: 16,
           maxZoom: 19,
         }
       ).addTo(mapRef.current);

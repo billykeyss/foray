@@ -52,9 +52,11 @@ const serwist = new Serwist({
       }),
     },
     {
-      matcher: ({ url }) => url.hostname.endsWith("basemaps.cartocdn.com"),
+      matcher: ({ url }) => url.hostname === "server.arcgisonline.com",
       handler: new CacheFirst({
-        cacheName: "foray-tiles",
+        // Renamed from "foray-tiles" with the Carto→Esri switch so no one keeps
+        // serving Carto's cached "API KEY REQUIRED" placeholders.
+        cacheName: "foray-tiles-esri",
         plugins: [
           new ExpirationPlugin({ maxEntries: 600, maxAgeSeconds: 60 * 60 * 24 * 30, purgeOnQuotaError: true }),
         ],
@@ -87,3 +89,9 @@ const serwist = new Serwist({
 });
 
 serwist.addEventListeners();
+
+// The pre-Esri tile cache only holds Carto tiles (latterly its "API KEY
+// REQUIRED" placeholders) that nothing requests anymore; free the space.
+self.addEventListener("activate", (event) => {
+  event.waitUntil(caches.delete("foray-tiles"));
+});
