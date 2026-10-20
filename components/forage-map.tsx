@@ -45,6 +45,55 @@ const PIN_HTML = `
 const FOREST_WMS = "https://edcintl.cr.usgs.gov/geoserver/landfire/wms";
 const FOREST_LAYER = "LF2023_EVT_CONUS";
 
+// Basemaps — all keyless. The default is about water: Esri's quiet light-gray
+// canvas with the USGS National Hydrography layer (creeks, ponds, springs,
+// marshes, with names) drawn on top, so water is the only colour on the map.
+// (Carto's light_nolabels started serving "API KEY REQUIRED" placeholder
+// tiles in Oct 2026.) USGS caches stop at z16 and Esri's canvas at z16;
+// Leaflet upscales beyond that. USGS layers are US-only.
+type BasemapId = "water" | "topo" | "satellite";
+const BASEMAP_KEY = "foray.basemap.v1";
+const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services";
+const USGS = "https://basemap.nationalmap.gov/arcgis/rest/services";
+const USGS_HYDRO = `${USGS}/USGSHydroCached/MapServer/tile/{z}/{y}/{x}`;
+const BASEMAPS: Record<BasemapId, { label: string; base: { url: string; attribution: string; maxNativeZoom: number }; hydro: boolean }> = {
+  water: {
+    label: "Water",
+    base: {
+      url: `${ESRI}/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`,
+      attribution: "Tiles © Esri — Esri, HERE, Garmin, © OpenStreetMap contributors",
+      maxNativeZoom: 16,
+    },
+    hydro: true,
+  },
+  topo: {
+    label: "Topo",
+    base: {
+      url: `${USGS}/USGSTopo/MapServer/tile/{z}/{y}/{x}`,
+      attribution: "USGS The National Map",
+      maxNativeZoom: 16,
+    },
+    hydro: false, // already drawn into USGS Topo
+  },
+  satellite: {
+    label: "Sat",
+    base: {
+      url: `${ESRI}/World_Imagery/MapServer/tile/{z}/{y}/{x}`,
+      attribution: "Imagery © Esri, Maxar, Earthstar Geographics",
+      maxNativeZoom: 19,
+    },
+    hydro: true,
+  },
+};
+
+function readBasemap(): BasemapId {
+  try {
+    const v = localStorage.getItem(BASEMAP_KEY);
+    if (v === "water" || v === "topo" || v === "satellite") return v;
+  } catch {}
+  return "water";
+}
+
 let burnsCache: any | null = null;
 async function loadBurns(): Promise<any> {
   if (burnsCache) return burnsCache;
@@ -62,11 +111,18 @@ export default function ForageMap({ lat, lon, onSelect }: Props) {
   const markerRef = useRef<any>(null);
   const burnLayerRef = useRef<any>(null);
   const forestLayerRef = useRef<any>(null);
+  const baseLayerRef = useRef<any>(null);
+  const hydroLayerRef = useRef<any>(null);
 
   const [showBurns, setShowBurns] = useState(false);
   const [burnCount, setBurnCount] = useState<number | null>(null);
   const [burnsLoading, setBurnsLoading] = useState(false);
   const [showForest, setShowForest] = useState(false);
+  const [basemap, setBasemap] = useState<BasemapId>("water");
+  const [mapReady, setMapReady] = useState(false);
+
+  // localStorage is client-only; read after mount so the static export's HTML matches.
+  useEffect(() => setBasemap(readBasemap()), []);
 
   // Load Leaflet once
   useEffect(() => {
@@ -98,23 +154,12 @@ export default function ForageMap({ lat, lon, onSelect }: Props) {
         attributionControl: true,
       }).setView(start, 11);
 
-      // Esri Light Gray Canvas: keyless. (Carto's light_nolabels started
-      // serving "API KEY REQUIRED" placeholder tiles in Oct 2026.) Native
-      // tiles stop at z16; Leaflet upscales beyond that.
-      L.tileLayer(
-        "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
-        {
-          attribution: "Tiles © Esri — Esri, HERE, Garmin, © OpenStreetMap contributors",
-          maxNativeZoom: 16,
-          maxZoom: 19,
-        }
-      ).addTo(mapRef.current);
-
       L.control.zoom({ position: "bottomright" }).addTo(mapRef.current);
 
       mapRef.current.on("click", (e: any) => {
         onSelect(e.latlng.lat, e.latlng.lng);
       });
+      setMapReady(true);
     };
 
     init();
@@ -147,6 +192,42 @@ export default function ForageMap({ lat, lon, onSelect }: Props) {
     }
     mapRef.current.setView(pos, mapRef.current.getZoom(), { animate: true });
   }, [lat, lon]);
+
+  // Basemap (+ the USGS water overlay where the style wants it). zIndex keeps
+  // the order base (1) < forest WMS (3) < water (5), so the forest tint never
+  // washes out the creeks.
+  useEffect(() => {
+    if (!mapReady || !window.L) return;
+    const L = window.L;
+    const map = mapRef.current;
+    const def = BASEMAPS[basemap];
+
+    if (baseLayerRef.current) map.removeLayer(baseLayerRef.current);
+    baseLayerRef.current = L.tileLayer(def.base.url, {
+      attribution: def.base.attribution,
+      maxNativeZoom: def.base.maxNativeZoom,
+      maxZoom: 19,
+      zIndex: 1,
+    }).addTo(map);
+
+    if (def.hydro) {
+      if (!hydroLayerRef.current) {
+        hydroLayerRef.current = L.tileLayer(USGS_HYDRO, {
+          attribution: "Water: USGS National Hydrography",
+          maxNativeZoom: 16,
+          maxZoom: 19,
+          zIndex: 5,
+        });
+      }
+      hydroLayerRef.current.addTo(map);
+    } else if (hydroLayerRef.current) {
+      map.removeLayer(hydroLayerRef.current);
+    }
+
+    try {
+      localStorage.setItem(BASEMAP_KEY, basemap);
+    } catch {}
+  }, [basemap, mapReady]);
 
   // Burn perimeter layer — load on first toggle, add/remove on toggle.
   // Age → morel window is decided by classifyBurn (current-year-relative).
@@ -227,6 +308,7 @@ export default function ForageMap({ lat, lon, onSelect }: Props) {
         transparent: true,
         version: "1.3.0",
         opacity: 0.5,
+        zIndex: 3,
         attribution: "Vegetation: LANDFIRE 2023 EVT · USGS",
       });
     }
@@ -243,7 +325,8 @@ export default function ForageMap({ lat, lon, onSelect }: Props) {
       />
 
       {/* Layer toggles (top-right, stacked) */}
-      <div style={{ position: "absolute", top: 12, right: 12, zIndex: 1000, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ position: "absolute", top: 12, right: 12, zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
+        <BasemapSwitch value={basemap} onChange={setBasemap} />
         <LayerToggle
           on={showBurns}
           onColor="var(--rust)"
@@ -333,6 +416,51 @@ export default function ForageMap({ lat, lon, onSelect }: Props) {
         </div>
       )}
     </>
+  );
+}
+
+function BasemapSwitch({ value, onChange }: { value: BasemapId; onChange: (v: BasemapId) => void }) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Map style"
+      className="font-mono"
+      style={{
+        display: "flex",
+        padding: 3,
+        gap: 2,
+        background: "rgba(250,245,233,0.94)",
+        border: "1px solid var(--line)",
+        borderRadius: 999,
+        boxShadow: "0 2px 8px -2px rgba(44,38,32,0.25)",
+      }}
+    >
+      {(Object.keys(BASEMAPS) as BasemapId[]).map((id) => {
+        const on = id === value;
+        return (
+          <button
+            key={id}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            onClick={() => onChange(id)}
+            style={{
+              padding: "5px 10px",
+              borderRadius: 999,
+              border: 0,
+              background: on ? "var(--rain)" : "transparent",
+              color: on ? "#faf5e9" : "var(--ink)",
+              fontSize: 10,
+              letterSpacing: "0.18em",
+              textTransform: "uppercase",
+              cursor: "pointer",
+            }}
+          >
+            {BASEMAPS[id].label}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 

@@ -52,13 +52,16 @@ const serwist = new Serwist({
       }),
     },
     {
-      matcher: ({ url }) => url.hostname === "server.arcgisonline.com",
+      // Basemaps + the water overlay (Esri canvas/imagery, USGS topo/hydro).
+      matcher: ({ url }) =>
+        url.hostname === "server.arcgisonline.com" || url.hostname === "basemap.nationalmap.gov",
       handler: new CacheFirst({
-        // Renamed from "foray-tiles" with the Carto→Esri switch so no one keeps
+        // Renamed from "foray-tiles" when Carto was dropped, so no one keeps
         // serving Carto's cached "API KEY REQUIRED" placeholders.
-        cacheName: "foray-tiles-esri",
+        cacheName: "foray-basemap",
         plugins: [
-          new ExpirationPlugin({ maxEntries: 600, maxAgeSeconds: 60 * 60 * 24 * 30, purgeOnQuotaError: true }),
+          // Three styles + the overlay share this cap.
+          new ExpirationPlugin({ maxEntries: 1500, maxAgeSeconds: 60 * 60 * 24 * 30, purgeOnQuotaError: true }),
         ],
       }),
     },
@@ -90,8 +93,9 @@ const serwist = new Serwist({
 
 serwist.addEventListeners();
 
-// The pre-Esri tile cache only holds Carto tiles (latterly its "API KEY
-// REQUIRED" placeholders) that nothing requests anymore; free the space.
+// Retired tile caches: "foray-tiles" holds Carto tiles (latterly its "API KEY
+// REQUIRED" placeholders), "foray-tiles-esri" the one-day Esri-only cache.
+// Nothing requests either anymore; free the space.
 self.addEventListener("activate", (event) => {
-  event.waitUntil(caches.delete("foray-tiles"));
+  event.waitUntil(Promise.all(["foray-tiles", "foray-tiles-esri"].map((c) => caches.delete(c))));
 });

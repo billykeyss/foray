@@ -10,7 +10,7 @@
 
 ## Runtime caches are keyed by host
 
-Each third-party origin gets its own cache + strategy: `foray-photos` (GCS, CacheFirst), `foray-wikimedia`, `foray-tiles-esri` (Esri basemap), `foray-weather` (Open-Meteo, NetworkFirst). `api.anthropic.com` is intentionally **`NetworkOnly`** (never cache AI calls).
+Each third-party origin gets its own cache + strategy: `foray-photos` (GCS, CacheFirst), `foray-wikimedia`, `foray-basemap` (Esri + USGS basemap tiles), `foray-weather` (Open-Meteo, NetworkFirst). `api.anthropic.com` is intentionally **`NetworkOnly`** (never cache AI calls).
 
 ## The photo-cap gotcha
 

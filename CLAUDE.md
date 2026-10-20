@@ -39,7 +39,7 @@ node scripts/build-offline-regions.mjs  # regenerate lib/offline-regions.ts (per
 `next.config.ts` sets `output: 'export'` and `images.unoptimized`. `npm run build` emits a fully static `out/`. Consequences that shape everything:
 
 - **No runtime data fetching for core content.** The catalog, trees, galleries, and image maps are large committed TS modules (`lib/catalog/curated.ts` alone is ~12k lines). Pages read them at build time; `app/catalog/[id]/page.tsx` uses `generateStaticParams()` over `PNW_CATALOG` to pre-render one HTML page per species.
-- **The only runtime network calls** are to third-party APIs from the client: Open-Meteo (weather), the Anthropic API (spot-finder, with a user-supplied key), Esri Light Gray Canvas basemap tiles (keyless; Carto now requires a key), and the GCS photo bucket. The service worker caches all of these.
+- **The only runtime network calls** are to third-party APIs from the client: Open-Meteo (weather), the Anthropic API (spot-finder, with a user-supplied key), keyless basemap tiles (Esri light-gray canvas / imagery + USGS topo and water overlay; Carto now requires a key), and the GCS photo bucket. The service worker caches all of these.
 - There are **two** `next.config.*` files; `next.config.ts` is authoritative (it declares the `upload.wikimedia.org` remote pattern and is what `render.yaml` filters on). Treat `next.config.js` as stale.
 
 ### The species catalog and its split
@@ -82,7 +82,7 @@ Photos are **not in git**. They live in a public GCS bucket (`storage.googleapis
 
 ### Offline / PWA (service worker)
 
-`sw/index.ts` is the serwist service worker, **built separately** by `scripts/build-sw.mjs` (esbuild) into `out/sw.js` at the end of `npm run build` — it is **not** a Next route and is excluded from `tsconfig`. build-sw precaches the app shell (all HTML, `_next` JS/CSS, self-hosted fonts, icons, manifest). Runtime caches (CacheFirst/NetworkFirst) are keyed by host: `foray-photos` (GCS), `foray-wikimedia`, `foray-weather` (Open-Meteo), `foray-tiles-esri` (Esri basemap); `api.anthropic.com` is `NetworkOnly`.
+`sw/index.ts` is the serwist service worker, **built separately** by `scripts/build-sw.mjs` (esbuild) into `out/sw.js` at the end of `npm run build` — it is **not** a Next route and is excluded from `tsconfig`. build-sw precaches the app shell (all HTML, `_next` JS/CSS, self-hosted fonts, icons, manifest). Runtime caches (CacheFirst/NetworkFirst) are keyed by host: `foray-photos` (GCS), `foray-wikimedia`, `foray-weather` (Open-Meteo), `foray-basemap` (Esri + USGS basemap tiles); `api.anthropic.com` is `NetworkOnly`.
 
 **Gotcha:** the `foray-photos` `ExpirationPlugin.maxEntries` **must exceed the full offline photo set** (~4.6k renditions) or a full/region download silently self-evicts. It is currently 9000.
 
