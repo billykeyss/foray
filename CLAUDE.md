@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**Foray** is a Next.js 15 **static-export** PWA field guide for Pacific Northwest mushrooms (deployed at foray.billhuang.me). It ships an offline-capable field book: a species catalog with photo galleries and lookalike cross-links, a spore/fruiting forecast from weather data, an AI "where should I forage" spot-finder, a foraging map, charts, and a journal. There is **no backend and no database** — every piece of data is compiled into TypeScript modules and bundled at build time.
+**Foray** is a Next.js 15 **static-export** PWA field guide for Pacific Northwest mushrooms (deployed at foray.billhuang.me). It ships an offline-capable field book: a species catalog with photo galleries and lookalike cross-links, a spore/fruiting forecast from weather data, an AI "where should I forage" spot-finder, a MapLibre foraging map (the home page, `/`), CA/NV fishing rules and stocking, charts, and a journal. Tabs: Map, Guide, Journal, Ask. There is **no backend and no database** — every piece of data is compiled into TypeScript modules and bundled at build time.
 
 ## Commands
 
@@ -39,7 +39,7 @@ node scripts/build-offline-regions.mjs  # regenerate lib/offline-regions.ts (per
 `next.config.ts` sets `output: 'export'` and `images.unoptimized`. `npm run build` emits a fully static `out/`. Consequences that shape everything:
 
 - **No runtime data fetching for core content.** The catalog, trees, galleries, and image maps are large committed TS modules (`lib/catalog/curated.ts` alone is ~12k lines). Pages read them at build time; `app/catalog/[id]/page.tsx` uses `generateStaticParams()` over `PNW_CATALOG` to pre-render one HTML page per species.
-- **The only runtime network calls** are to third-party APIs from the client: Open-Meteo (weather), the Anthropic API (spot-finder, with a user-supplied key), keyless basemap tiles (Esri light-gray canvas / imagery + USGS topo and water overlay; Carto now requires a key), and the GCS photo bucket. The service worker caches all of these.
+- **The only runtime network calls** are to third-party APIs from the client: Open-Meteo (weather), the Anthropic API (spot-finder, with a user-supplied key), keyless basemap tiles (Esri light-gray canvas / imagery + USGS topo and water overlay; Carto now requires a key), terrain and forest-overlay tiles, and the GCS photo bucket. The service worker caches all of these.
 - There are **two** `next.config.*` files; `next.config.ts` is authoritative (it declares the `upload.wikimedia.org` remote pattern and is what `render.yaml` filters on). Treat `next.config.js` as stale.
 
 ### The species catalog and its split
@@ -82,11 +82,21 @@ Photos are **not in git**. They live in a public GCS bucket (`storage.googleapis
 
 ### Offline / PWA (service worker)
 
-`sw/index.ts` is the serwist service worker, **built separately** by `scripts/build-sw.mjs` (esbuild) into `out/sw.js` at the end of `npm run build` — it is **not** a Next route and is excluded from `tsconfig`. build-sw precaches the app shell (all HTML, `_next` JS/CSS, self-hosted fonts, icons, manifest). Runtime caches (CacheFirst/NetworkFirst) are keyed by host: `foray-photos` (GCS), `foray-wikimedia`, `foray-weather` (Open-Meteo), `foray-basemap` (Esri + USGS basemap tiles); `api.anthropic.com` is `NetworkOnly`.
+`sw/index.ts` is the serwist service worker, **built separately** by `scripts/build-sw.mjs` (esbuild) into `out/sw.js` at the end of `npm run build` — it is **not** a Next route and is excluded from `tsconfig`. build-sw precaches the app shell (all HTML, `_next` JS/CSS, self-hosted fonts, icons, manifest). Runtime caches (CacheFirst/NetworkFirst) are keyed by host: `foray-photos` (GCS), `foray-wikimedia`, `foray-weather` (Open-Meteo), `foray-basemap` (Esri + USGS basemap tiles), `foray-imagery`, `foray-terrain`, `foray-forest`; it also precaches `fishing/**.json` and the glyph PBFs in `public/fonts/glyphs/`, and ignores the `w`, `spot` and `on` query params when matching precache entries; `api.anthropic.com` is `NetworkOnly`.
 
 **Gotcha:** the `foray-photos` `ExpirationPlugin.maxEntries` **must exceed the full offline photo set** (~4.6k renditions) or a full/region download silently self-evicts. It is currently 9000.
 
 The opt-in "download for offline" feature: `lib/use-offline-download.ts` (hook) + `components/offline-download.tsx` (UI in Settings) offer an "Everything" download plus per-region downloads. Saved/ready status is computed from **actual Cache Storage contents** (not a localStorage flag) so it survives reloads. Region → photo-URL lists come from the generated `lib/offline-regions.ts`.
+
+### Fishing data (imported from Keeper)
+
+CA/NV fishing rules come from the separate Keeper repo and are **committed here as generated output**; Foray has no runtime fishing backend.
+
+- Run `npm run import:keeper` (`scripts/import-keeper.mjs`). `KEEPER_DIR` defaults to `/Users/cortex/projects/keeper/.claude/worktrees/pure-resolve` until Keeper's `feat/pure-resolve` merges, then `~/projects/keeper`. It needs Keeper's own `node_modules/.bin/tsx` to run Keeper's zod validators.
+- Generated, do not edit by hand: `lib/fishing/engine/*` (byte-identical copy of Keeper `src/resolve/`), `lib/fishing/waters-index.ts` (`FISH_WATERS`), `lib/fishing/meta.ts` (`FISHING_DATA`: `keeperSha`, `exportedAt`, `waterCount`, shown in Settings), `public/fishing/w/<slug>.json`, `public/fishing/stocking-recent.json`, `scripts/fixtures/keeper-goldens.json`.
+- **The engine is owned by Keeper.** Fix resolver bugs in Keeper and re-import; never edit `lib/fishing/engine/` here. `scripts/fishing-resolve.test.mjs` checks the 164 golden cases.
+- Slugs that collide across Keeper data dirs become `<slug>-<dir>`.
+- Routes: Guide -> Fish is `/fish`, a water's rules at `/fish/water?w=<slug>`, and `/?spot=<slug>` opens that water on the map. Ask has `find_waters`, `get_water_rules`, `recent_stocking` tools.
 
 ### Regions
 

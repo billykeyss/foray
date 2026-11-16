@@ -19,5 +19,5 @@ Type uses `font-display` (Fraunces), `font-body` (Inter), `font-mono` (IBM Plex 
 ## Client vs static-export constraints
 
 - Interactive components are `"use client"`.
-- Leaflet has no SSR; the map is loaded via `next/dynamic` with `ssr: false` (required under `output: 'export'`). Follow that pattern for any browser-only library.
+- The map is MapLibre GL 4.7.1 (`components/field-map/*`; it replaced Leaflet). It has no SSR, so it is loaded via `next/dynamic` with `ssr: false` (required under `output: 'export'`). Follow that pattern for any browser-only library.
 - Primitives come from Radix (`@radix-ui/*`) and icons from `lucide-react` / `@radix-ui/react-icons`.

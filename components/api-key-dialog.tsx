@@ -1,8 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { useApiKey } from "@/lib/api-key-context";
 import OfflineDownload from "@/components/offline-download";
+import { FISHING_DATA } from "@/lib/fishing/meta.ts";
+
+const FISHING_DATE = new Date(FISHING_DATA.exportedAt).toLocaleDateString(
+  "en-US",
+  { month: "short", day: "numeric", year: "numeric" },
+);
 
 interface Props {
   open: boolean;
@@ -30,7 +37,9 @@ export default function ApiKeyDialog({ open, onClose }: Props) {
     onClose();
   };
 
-  return (
+  // Portal to <body>: the nav bars use backdrop-filter, which makes `fixed`
+  // resolve against the bar instead of the viewport and clips this sheet.
+  return createPortal(
     <div
       className="fixed inset-0 z-[80] grid items-end sm:items-center"
       style={{ background: "rgba(26, 20, 16, 0.5)" }}
@@ -46,6 +55,8 @@ export default function ApiKeyDialog({ open, onClose }: Props) {
           borderTopRightRadius: 28,
           boxShadow: "0 -30px 60px -30px rgba(0,0,0,0.4)",
           paddingBottom: "max(24px, env(safe-area-inset-bottom))",
+          maxHeight: "100dvh",
+          overflowY: "auto",
         }}
       >
         <div
@@ -156,7 +167,15 @@ export default function ApiKeyDialog({ open, onClose }: Props) {
         </div>
 
         <OfflineDownload />
+
+        <p
+          className="font-mono mt-4"
+          style={{ fontSize: 11, color: "var(--ink-soft)" }}
+        >
+          Fishing data as of {FISHING_DATE} · {FISHING_DATA.waterCount} waters
+        </p>
       </form>
-    </div>
+    </div>,
+    document.body,
   );
 }
