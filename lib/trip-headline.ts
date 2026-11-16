@@ -13,11 +13,26 @@ function fishClause(fish: ScopeStatus[]): string | null {
 export function tripHeadline(forage: { label: string } | null, fish: ScopeStatus[]): string {
   const fishText = fishClause(fish);
   if (forage) {
-    // SporeReading labels are mostly one word; "Prime fruiting window" reads as "Prime" here.
+    // Coupled to LABELS in lib/weather.ts: every band label is one word except
+    // "Prime fruiting window", which reads as "Prime" here. Revisit if a label changes.
     const L = forage.label.trim().split(/\s+/)[0];
     if (!fishText) return `${L} for foraging`;
     if (fish.includes("open")) return `Good to fish, ${L.toLowerCase()} to forage`;
     return `${L} for foraging · ${fishText}`;
   }
   return fishText ?? "Set a location to plan today";
+}
+
+/** A nearby-water row as the trip card holds it (see components/trip-card/fish-half.tsx). */
+export interface FishRowState {
+  state: { kind: "loading" } | { kind: "ready"; status: ScopeStatus } | { kind: "not-cached" } | { kind: "error" };
+}
+
+/** Statuses the headline may use. null while any row is still loading (hold the fish clause back);
+ *  a row that couldn't load (not downloaded / error) counts as "unknown", so the headline can never
+ *  claim e.g. "closed" for a water whose rules we don't have. */
+export function settledFishStatuses(rows: FishRowState[] | null): ScopeStatus[] | null {
+  if (!rows) return [];
+  if (rows.some((r) => r.state.kind === "loading")) return null;
+  return rows.map((r) => (r.state.kind === "ready" ? r.state.status : "unknown"));
 }

@@ -1,19 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { ScopeStatus } from "@/lib/fishing/engine/types.ts";
 import { loadWater, WaterNotCachedError } from "@/lib/fishing/load.ts";
 import { resolveDataset } from "@/lib/fishing/resolve.ts";
 import { localIsoDate } from "@/lib/fishing/local-date.ts";
 import { nearestWaters } from "@/lib/fishing/nearby.ts";
 import { StatusStamp } from "@/components/fishing/status-stamp";
+import type { FishRowState } from "@/lib/trip-headline.ts";
 
-export interface FishRow {
+/** `state.ready` carries today's resolved status; `not-cached` = offline and never downloaded. */
+export interface FishRow extends FishRowState {
   slug: string;
   name: string;
+  waterType: string;
   distanceMi: number;
-  /** `ready` carries today's resolved status; `not-cached` = offline and never downloaded. */
-  state: { kind: "loading" } | { kind: "ready"; status: ScopeStatus } | { kind: "not-cached" } | { kind: "error" };
 }
 
 /** The 3 nearest waters (default 50 mi radius), each resolved for the device's local date.
@@ -27,7 +27,7 @@ export function useNearbyFish(lat: number | null, lon: number | null): FishRow[]
     }
     let cancelled = false;
     const near = nearestWaters(lat, lon, 3);
-    const base = near.map((w) => ({ slug: w.slug, name: w.name, distanceMi: w.distanceMi }));
+    const base = near.map((w) => ({ slug: w.slug, name: w.name, waterType: w.waterType, distanceMi: w.distanceMi }));
     setRows(base.map((w) => ({ ...w, state: { kind: "loading" } })));
     const today = localIsoDate();
     Promise.all(
@@ -47,11 +47,6 @@ export function useNearbyFish(lat: number | null, lon: number | null): FishRow[]
     };
   }, [lat, lon]);
   return rows;
-}
-
-/** Statuses of the rows that resolved, for the headline. */
-export function fishStatuses(rows: FishRow[] | null): ScopeStatus[] {
-  return (rows ?? []).flatMap((r) => (r.state.kind === "ready" ? [r.state.status] : []));
 }
 
 const fmtMi = (d: number) => `${d < 10 ? d.toFixed(1) : Math.round(d)} mi`;
@@ -84,23 +79,21 @@ export default function FishHalf({
           {(rows ?? []).map((r) => (
             <li key={r.slug}>
               <button type="button" className="kp-trip-water" onClick={() => onWaterTap(r.slug)}>
-                <span className="kp-trip-water-name">
-                  <span className="kp-trip-water-title" title={r.name}>{r.name}</span>
-                  <span className="kp-trip-water-dist">{fmtMi(r.distanceMi)}</span>
-                </span>
-                {r.state.kind === "ready" ? (
-                  <StatusStamp status={r.state.status} size="sm" short />
-                ) : r.state.kind === "loading" ? (
-                  <span className="kp-trip-pending" aria-label="Checking rules">…</span>
-                ) : (
-                  <span
-                    className="status-stamp status-stamp--sm kp-trip-miss"
-                    data-status="unknown"
-                    title={r.state.kind === "not-cached" ? "Rules not downloaded" : "Couldn’t load rules"}
-                  >
-                    {r.state.kind === "not-cached" ? "Not downloaded" : "CHECK"}
+                <span className="kp-trip-water-title">{r.name}</span>
+                <span className="kp-trip-water-meta">
+                  <span className="kp-trip-water-dist">
+                    {fmtMi(r.distanceMi)} · <span className="kp-trip-water-type">{r.waterType}</span>
                   </span>
-                )}
+                  {r.state.kind === "ready" ? (
+                    <StatusStamp status={r.state.status} size="sm" short />
+                  ) : r.state.kind === "loading" ? (
+                    <span className="kp-trip-pending" aria-label="Checking rules">…</span>
+                  ) : (
+                    <StatusStamp status="unknown" size="sm" short />
+                  )}
+                </span>
+                {r.state.kind === "not-cached" && <span className="kp-trip-water-note">Not downloaded</span>}
+                {r.state.kind === "error" && <span className="kp-trip-water-note">Couldn’t load rules</span>}
               </button>
             </li>
           ))}

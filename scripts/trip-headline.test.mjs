@@ -29,3 +29,16 @@ test("multi-word spore labels use their first word", () => {
   assert.equal(tripHeadline({ label: "Prime fruiting window" }, []), "Prime for foraging");
   assert.equal(tripHeadline({ label: "Prime fruiting window" }, ["open"]), "Good to fish, prime to forage");
 });
+
+test("settledFishStatuses: holds back while loading, unloadable rows count as unknown", async () => {
+  const { settledFishStatuses } = await import("../lib/trip-headline.ts");
+  const ready = (status) => ({ state: { kind: "ready", status } });
+  assert.equal(settledFishStatuses([ready("open"), { state: { kind: "loading" } }]), null);
+  assert.deepEqual(settledFishStatuses([]), []);
+  assert.deepEqual(settledFishStatuses(null), []);
+  const partial = settledFishStatuses([{ state: { kind: "not-cached" } }, ready("closed"), ready("closed")]);
+  assert.deepEqual(partial, ["unknown", "closed", "closed"]);
+  assert.equal(tripHeadline(null, partial), "Check fishing rules nearby");
+  assert.equal(tripHeadline({ label: "Fair" }, partial), "Fair for foraging · Check fishing rules nearby");
+  assert.deepEqual(settledFishStatuses([{ state: { kind: "error" } }, ready("catch_and_release")]), ["unknown", "catch_and_release"]);
+});

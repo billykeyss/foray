@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
-/** Today's trip card. Phone: a bottom sheet with two snap points (peek ≈46dvh, expanded) toggled
+/** Today's trip card. Phone: a bottom sheet with two snap points (peek ≈46dvh, grown just enough
+ *  to keep the whole summary above the tab bar when it's taller, e.g. a two-line water name; expanded) toggled
  *  by the handle (tap, or a short vertical drag). Desktop (lg+): a scrollable left panel with the
  *  expanded content always shown. The tab bar (z-50) sits above the card, never under it. */
 export default function TripCard({
@@ -15,6 +16,7 @@ export default function TripCard({
   onExpandedChange,
   header,
   children,
+  onPeekChange,
 }: {
   kicker: string;
   headline: string;
@@ -26,8 +28,14 @@ export default function TripCard({
   /** Desktop-only header (the location chip row lives over the map on phone). */
   header?: ReactNode;
   children: ReactNode;
+  /** Phone peek height in px (also published as the --kp-trip-peek CSS variable on <html>). */
+  onPeekChange?: (px: number) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const grabRef = useRef<HTMLDivElement>(null);
+  const summaryRef = useRef<HTMLDivElement>(null);
+  const peekCb = useRef(onPeekChange);
+  peekCb.current = onPeekChange;
   const [isDesktop, setIsDesktop] = useState(false);
   const drag = useRef<{ y: number; moved: boolean } | null>(null);
 
@@ -37,6 +45,30 @@ export default function TripCard({
     on();
     mq.addEventListener("change", on);
     return () => mq.removeEventListener("change", on);
+  }, []);
+
+  // Peek = max(46% of the viewport, what the summary needs to clear the tab bar).
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const measure = () => {
+      const scroll = scrollRef.current;
+      if (!scroll) return;
+      const padBottom = parseFloat(getComputedStyle(scroll).paddingBottom) || 0;
+      // padBottom = tab bar + 16px breathing room under the CTA.
+      const needed = (grabRef.current?.offsetHeight ?? 0) + (summaryRef.current?.offsetHeight ?? 0) + padBottom;
+      const px = Math.round(Math.max(window.innerHeight * 0.46, needed));
+      root.style.setProperty("--kp-trip-peek", `${px}px`);
+      peekCb.current?.(px);
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    if (summaryRef.current) ro?.observe(summaryRef.current);
+    return () => {
+      window.removeEventListener("resize", measure);
+      ro?.disconnect();
+      root.style.removeProperty("--kp-trip-peek");
+    };
   }, []);
 
   // Back to the top when collapsing, so the peek always shows the summary.
@@ -53,6 +85,7 @@ export default function TripCard({
       aria-label="Today's trip"
     >
       <div
+        ref={grabRef}
         className="kp-trip-grab"
         onPointerDown={(e) => (drag.current = { y: e.clientY, moved: false })}
         onPointerMove={(e) => {
@@ -64,6 +97,7 @@ export default function TripCard({
             onExpandedChange(dy < 0);
           }
         }}
+        onPointerCancel={() => (drag.current = null)}
         onPointerUp={() => {
           // A drag already snapped; the click that follows must not toggle back.
           setTimeout(() => (drag.current = null), 0);
@@ -82,7 +116,7 @@ export default function TripCard({
       </div>
       <div ref={scrollRef} className="kp-trip-scroll">
         {header && <div className="kp-trip-header">{header}</div>}
-        <div className="kp-trip-summary">
+        <div ref={summaryRef} className="kp-trip-summary">
           <span className="kp-trip-kicker">{kicker}</span>
           <h1 className="kp-trip-headline">{headline}</h1>
           <div className="kp-trip-halves">

@@ -190,8 +190,8 @@ export default function FieldMap(props: FieldMapProps) {
       <style>{`
         /* Scoped selectors: must out-rank maplibre-gl.css, which can load after this tag. */
         .field-map .maplibregl-ctrl-top-left{top:calc(116px + env(safe-area-inset-top))}
-        /* Phone: keep attribution above the trip card's peek (46dvh, see .kp-trip). */
-        .field-map .maplibregl-ctrl-bottom-left{bottom:calc(46dvh + 6px)}
+        /* Phone: keep attribution above the trip card's peek (--kp-trip-peek, see .kp-trip). */
+        .field-map .maplibregl-ctrl-bottom-left{bottom:calc(var(--kp-trip-peek, 46dvh) + 6px)}
         @media (min-width:1024px){
           .field-map .maplibregl-ctrl-top-left{top:12px}
           .field-map .maplibregl-ctrl-bottom-left{bottom:0}

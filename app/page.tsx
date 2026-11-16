@@ -6,14 +6,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import LocationChooser from "@/components/location-chooser";
 import TripCard from "@/components/trip-card/trip-card";
 import ForageHalf, { type ForagePick } from "@/components/trip-card/forage-half";
-import FishHalf, { fishStatuses, useNearbyFish } from "@/components/trip-card/fish-half";
+import FishHalf, { useNearbyFish } from "@/components/trip-card/fish-half";
 import TodayDetail from "@/components/trip-card/today-detail";
 import { RulesSheet, type Line } from "@/components/fishing/rules-sheet";
 import { useLocation } from "@/lib/location-context";
 import { useRegion } from "@/lib/region-context";
 import { useUnits } from "@/lib/units-context";
 import { computeSporeScore, suggestSpeciesList, type DailyWeather } from "@/lib/weather";
-import { tripHeadline } from "@/lib/trip-headline.ts";
+import { settledFishStatuses, tripHeadline } from "@/lib/trip-headline.ts";
 import { FISH_WATERS } from "@/lib/fishing/waters-index.ts";
 
 const FieldMap = dynamic(() => import("@/components/field-map/field-map.tsx"), {
@@ -30,7 +30,7 @@ const FieldMap = dynamic(() => import("@/components/field-map/field-map.tsx"), {
 
 const WATER_BY_SLUG = new Map(FISH_WATERS.map((w) => [w.slug, w]));
 const SAFE_TO_SUGGEST = new Set(["choice", "edible", "edible-with-caution", "edible-when-cooked"]);
-/** Peek height of the phone trip card, as a fraction of the viewport (matches .kp-trip in keeper.css). */
+/** Minimum peek of the phone trip card as a fraction of the viewport (TripCard reports the real value). */
 const PEEK = 0.46;
 
 function useMedia(query: string) {
@@ -84,6 +84,7 @@ export default function HomePage() {
   const [sheetSlug, setSheetSlug] = useState<string | null>(null);
   const [spotlight, setSpotlight] = useState<Line | null>(null);
   const [focus, setFocus] = useState<[number, number] | null>(null);
+  const [peekPx, setPeekPx] = useState<number | null>(null);
 
   // The map home doesn't scroll; the card scrolls inside itself.
   useEffect(() => {
@@ -130,7 +131,13 @@ export default function HomePage() {
   );
   const fishRows = useNearbyFish(lat, lon);
   const hasLocation = lat != null && lon != null;
-  const headline = hasLocation ? tripHeadline(reading, fishStatuses(fishRows)) : tripHeadline(null, []);
+  // Fish clause only from settled rows: held back while any water loads; unloadable rows count as unknown.
+  const settled = settledFishStatuses(fishRows);
+  const headline = !hasLocation
+    ? tripHeadline(null, [])
+    : settled === null && !reading
+      ? "Checking today’s conditions…"
+      : tripHeadline(reading, settled ?? []);
   const kicker = `Today's trip · ${dayjs().format("ddd D MMM")}`.toUpperCase();
 
   const forageSpots = useMemo(
@@ -142,8 +149,8 @@ export default function HomePage() {
     () =>
       isDesktop
         ? { right: sheetSlug ? 420 : 0 }
-        : { top: 110, bottom: Math.round(vh * PEEK), right: sheetSlug && sheetBeside ? 420 : 0 },
-    [isDesktop, sheetBeside, sheetSlug, vh],
+        : { top: 110, bottom: peekPx ?? Math.round(vh * PEEK), right: sheetSlug && sheetBeside ? 420 : 0 },
+    [isDesktop, sheetBeside, sheetSlug, vh, peekPx],
   );
 
   const today = weather.find((d) => d.time === dayjs().format("YYYY-MM-DD"));
@@ -227,6 +234,7 @@ export default function HomePage() {
         expanded={expanded}
         onExpandedChange={setExpanded}
         onPlan={planWithAI}
+        onPeekChange={setPeekPx}
         header={isDesktop ? chipRow : undefined}
         forage={<ForageHalf reading={reading} loading={loading} picks={picks} />}
         fish={
