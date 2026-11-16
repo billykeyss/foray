@@ -12,6 +12,7 @@
     "localize:images": "node scripts/localize-images.mjs",
     "data:burns": "node scripts/fetch-burns.mjs",
     "sync:images": "gcloud storage rsync -r .image-staging gs://foray-field-guide/img --account=yichenhuangwork@gmail.com",
+    "import:keeper": "node --experimental-strip-types scripts/import-keeper.mjs",
     "check:images": "node --experimental-strip-types scripts/find-dead-images.mjs"
   },
   "dependencies": {
