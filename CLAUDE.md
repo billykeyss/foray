@@ -97,6 +97,8 @@ CA/NV fishing rules come from the separate Keeper repo and are **committed here 
 - **The engine is owned by Keeper.** Fix resolver bugs in Keeper and re-import; never edit `lib/fishing/engine/` here. `scripts/fishing-resolve.test.mjs` checks the 164 golden cases.
 - Slugs that collide across Keeper data dirs become `<slug>-<dir>`.
 - Routes: Guide -> Fish is `/fish`, a water's rules at `/fish/water?w=<slug>`, and `/?spot=<slug>` opens that water on the map. Ask has `find_waters`, `get_water_rules`, `recent_stocking` tools.
+- Links whose target reads its query string (`/?spot=`, `/?lat=&lon=`, `/fish/water?w=`) use `components/doc-link.tsx` (a plain `<a>`), not `next/link`: offline, Next's router reuses a failed prefetch of the bare path and drops the query. Every such param must also be in `ignoreURLParametersMatching` in `sw/index.ts` (`scripts/check-sw-fishing.test.mjs` enforces both).
+- "Today" in UI that resolves rules/hours/licenses comes from `useLocalToday()` (`lib/use-local-today.ts`), so it rolls over at local midnight and on resume.
 
 ### Regions
 

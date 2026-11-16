@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
-import Link from "next/link";
+import DocLink from "@/components/doc-link";
 import { useSearchParams } from "next/navigation";
 import { isValidIsoDate } from "@/lib/fishing/engine/index.ts";
 import { WaterHeader, WaterRulesBody, WaterStateNotice, useWaterRules } from "@/components/fishing/rules-sheet";
@@ -21,9 +21,9 @@ function WaterReader() {
   return (
     <main className="kp water-page">
       <div className="water-page-inner">
-        <Link className="water-page-back" href={slug ? `/?spot=${encodeURIComponent(slug)}` : "/"}>
+        <DocLink className="water-page-back" href={slug ? `/?spot=${encodeURIComponent(slug)}` : "/"}>
           ← Show on map
-        </Link>
+        </DocLink>
         {ready ? <WaterHeader data={ready} thunk /> : <div className="sheet-header" />}
         <div className="water-page-body">
           {ready ? (

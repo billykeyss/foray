@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import DocLink from "@/components/doc-link";
 import { useEffect, useMemo, useState } from "react";
 import GuideSegmented from "@/components/guide-segmented";
 import { FISH_WATERS } from "@/lib/fishing/waters-index.ts";
@@ -25,12 +25,12 @@ function fmtDate(iso: string) {
 function WaterLinks({ slug, name }: { slug: string; name: string }) {
   return (
     <div className="kp-fish-row-links">
-      <Link className="kp-fish-link" href={`/?spot=${encodeURIComponent(slug)}`} aria-label={`${name} on the map`}>
+      <DocLink className="kp-fish-link" href={`/?spot=${encodeURIComponent(slug)}`} aria-label={`${name} on the map`}>
         Map
-      </Link>
-      <Link className="kp-fish-link" href={`/fish/water?w=${encodeURIComponent(slug)}`} aria-label={`${name} rules`}>
+      </DocLink>
+      <DocLink className="kp-fish-link" href={`/fish/water?w=${encodeURIComponent(slug)}`} aria-label={`${name} rules`}>
         Rules
-      </Link>
+      </DocLink>
     </div>
   );
 }
@@ -61,9 +61,9 @@ function RecentStocking() {
           {rows.map((e, i) => (
             <li key={`${e.slug}-${e.date}-${e.species}-${i}`} className="kp-fish-row">
               <div className="kp-fish-row-main">
-                <Link className="kp-fish-row-name" href={`/?spot=${encodeURIComponent(e.slug)}`}>
+                <DocLink className="kp-fish-row-name" href={`/?spot=${encodeURIComponent(e.slug)}`}>
                   {e.waterName}
-                </Link>
+                </DocLink>
                 <div className="kp-fish-stock-meta">
                   {fmtDate(e.date)} · {e.species}
                   {e.quantity != null ? ` · ${e.quantity.toLocaleString("en-US")}` : ""}
@@ -138,9 +138,9 @@ export default function FishPage() {
           {filtered.slice(0, shown).map((w) => (
             <li key={w.slug} className="kp-fish-row">
               <div className="kp-fish-row-main">
-                <Link className="kp-fish-row-name" href={`/fish/water?w=${encodeURIComponent(w.slug)}`}>
+                <DocLink className="kp-fish-row-name" href={`/fish/water?w=${encodeURIComponent(w.slug)}`}>
                   {w.name}
-                </Link>
+                </DocLink>
                 <div className="kp-fish-row-meta">
                   {w.waterType.charAt(0).toUpperCase() + w.waterType.slice(1)} · {w.states.join(", ")}
                   {w.species.length ? ` · ${w.species.slice(0, 3).join(", ")}` : ""}

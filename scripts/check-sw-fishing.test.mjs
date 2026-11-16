@@ -56,3 +56,76 @@ test("out/sw.js precaches self-hosted map glyphs", (t) => {
   const sw = readFileSync(swPath, "utf8");
   assert.ok(sw.includes("/fonts/glyphs/Open%20Sans%20Semibold/0-255.pbf"));
 });
+
+// Every query param the app puts on a same-origin navigation link must be ignored by the precache
+// lookup, or the page misses the precache offline and falls through to /~offline.
+const NAV_PARAMS = ["w", "spot", "on", "lat", "lon"];
+
+test("ignoreURLParametersMatching covers every app navigation param", () => {
+  const m = src.match(/ignoreURLParametersMatching:\s*\[([^\]]*)\]/);
+  assert.ok(m, "sw/index.ts sets ignoreURLParametersMatching");
+  const patterns = [...m[1].matchAll(/\/((?:\\\/|[^/])+)\/([a-z]*)/g)].map(([, body, flags]) => new RegExp(body, flags));
+  for (const p of NAV_PARAMS) assert.ok(patterns.some((re) => re.test(p)), `param "${p}" is ignored`);
+  assert.ok(patterns.some((re) => re.test("utm_source")) && patterns.some((re) => re.test("fbclid")));
+});
+
+test("no same-origin link uses a query param the service worker doesn't ignore", async () => {
+  const { readdirSync, statSync } = await import("node:fs");
+  const files = [];
+  const walk = (d) => {
+    for (const f of readdirSync(d)) {
+      const p = path.join(d, f);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.(tsx?|mjs)$/.test(f)) files.push(p);
+    }
+  };
+  for (const d of ["app", "components", "lib"]) walk(path.join(ROOT, d));
+  const seen = new Set();
+  // href="/x?a=…", href={`/x?a=${…}&b=${…}`}, push("/x?a=…"), searchParams.set("a", …)
+  const linkRe = /(?:href=\{?|push\(|replace\(|href:\s*)[`"'](\/[^`"'\s]*\?[^`"'\s]*)/g;
+  for (const f of files) {
+    if (f.includes(`${path.sep}engine${path.sep}`) || f.includes(`${path.sep}catalog${path.sep}`)) continue;
+    const text = readFileSync(f, "utf8");
+    for (const [, url] of text.matchAll(linkRe)) {
+      for (const [, k] of url.slice(url.indexOf("?")).matchAll(/[?&]([a-zA-Z_]+)=/g)) seen.add(k);
+    }
+    for (const [, k] of text.matchAll(/searchParams\.set\(\s*["']([a-zA-Z_]+)["']/g)) seen.add(k);
+  }
+  for (const k of ["w", "spot", "lat", "lon"]) assert.ok(seen.has(k), `scan finds the known "${k}" link param`);
+  for (const k of seen) assert.ok(NAV_PARAMS.includes(k), `link param "${k}" must be in ignoreURLParametersMatching`);
+});
+
+test("burns.geojson is runtime-cached for offline (foray-data, same-origin)", () => {
+  const i = src.indexOf('cacheName: "foray-data"');
+  assert.ok(i > 0);
+  const m = src.slice(src.lastIndexOf("matcher:", i), i);
+  assert.match(m, /sameOrigin/);
+  assert.match(m, /\/data\/burns\.geojson/);
+});
+
+test("forest-type (LANDFIRE) and water (USGS hydro) overlay hosts are runtime-cached", () => {
+  const i = src.indexOf('cacheName: "foray-forest"');
+  assert.match(src.slice(src.lastIndexOf("matcher:", i), i), /edcintl\.cr\.usgs\.gov/);
+  const j = src.indexOf('cacheName: "foray-basemap"');
+  assert.match(src.slice(src.lastIndexOf("matcher:", j), j), /basemap\.nationalmap\.gov/);
+  const layers = readFileSync(path.join(ROOT, "components/field-map/layers.ts"), "utf8");
+  assert.match(layers, /https:\/\/edcintl\.cr\.usgs\.gov\/geoserver\/landfire\/wms/);
+  assert.match(layers, /https:\/\/basemap\.nationalmap\.gov\/arcgis\/rest\/services\/USGSHydroCached/);
+});
+
+test("query-string links use DocLink (full navigation), never next/link", async () => {
+  // Offline, next/link reuses a failed prefetch of the bare path and drops the query (lands on "/").
+  const { readdirSync, statSync } = await import("node:fs");
+  const bad = [];
+  const walk = (d) => {
+    for (const f of readdirSync(d)) {
+      const p = path.join(d, f);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.tsx$/.test(f)) {
+        for (const m of readFileSync(p, "utf8").matchAll(/<Link\b[^>]*href=\{?[^>]*?[`"']\/[^`"'\s]*\?[a-zA-Z_]+=/g)) bad.push(`${path.relative(ROOT, p)}: ${m[0].slice(0, 80)}`);
+      }
+    }
+  };
+  for (const d of ["app", "components"]) walk(path.join(ROOT, d));
+  assert.deepEqual(bad, []);
+});

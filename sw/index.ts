@@ -3,6 +3,7 @@ import {
   CacheFirst,
   NetworkFirst,
   NetworkOnly,
+  StaleWhileRevalidate,
   ExpirationPlugin,
   type PrecacheEntry,
 } from "serwist";
@@ -18,10 +19,11 @@ const serwist = new Serwist({
   navigationPreload: true,
   precacheOptions: {
     cleanupOutdatedCaches: true,
-    // Static pages read their target from the query string (/fish/water?w=<slug>, /?spot=<slug>),
-    // so these params must not defeat the precache match when offline. Serwist's default only
-    // ignores utm_* and fbclid.
-    ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^w$/, /^spot$/, /^on$/],
+    // Static pages read their target from the query string (/fish/water?w=<slug>[&on=<date>],
+    // /?spot=<slug>, saved-spot links /?lat=<lat>&lon=<lon>), so these params must not defeat the
+    // precache match when offline. Serwist's default only ignores utm_* and fbclid. Any new
+    // same-origin link with a query param belongs here (scripts/check-sw-fishing.test.mjs checks).
+    ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^w$/, /^spot$/, /^on$/, /^lat$/, /^lon$/],
   },
   runtimeCaching: [
     {
@@ -106,6 +108,15 @@ const serwist = new Serwist({
         plugins: [
           new ExpirationPlugin({ maxEntries: 800, maxAgeSeconds: 60 * 60 * 24 * 30, purgeOnQuotaError: true }),
         ],
+      }),
+    },
+    {
+      // Wildfire perimeters (~2.7 MB) for the map's Burns layer. Too big for the precache budget and
+      // only fetched when the layer is switched on; keep the copy for offline, refresh when online.
+      matcher: ({ url, sameOrigin }) => sameOrigin && url.pathname === "/data/burns.geojson",
+      handler: new StaleWhileRevalidate({
+        cacheName: "foray-data",
+        plugins: [new ExpirationPlugin({ maxEntries: 4, purgeOnQuotaError: true })],
       }),
     },
     {
