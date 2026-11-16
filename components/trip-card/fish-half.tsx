@@ -8,7 +8,7 @@ import { nearestWaters } from "@/lib/fishing/nearby.ts";
 import { StatusStamp } from "@/components/fishing/status-stamp";
 import type { FishRowState } from "@/lib/trip-headline.ts";
 import { sunTimes } from "@/lib/daylight.ts";
-import { fishingHoursWindow, fmtClock } from "@/lib/fishing-hours.ts";
+import { fishingHoursWindow, fmtClock, pickHoursRule } from "@/lib/fishing-hours.ts";
 import { licenseWarning } from "@/lib/license.ts";
 import { useLicense } from "@/lib/use-license.ts";
 import type { SerializedRule } from "@/lib/fishing/engine/types.ts";
@@ -19,9 +19,22 @@ export interface RowHours {
   text: string;
   citation: string | null;
   confidence: string;
+  /** Rule data date (dataset as-of). */
+  asOf: string;
 }
 
-function hoursFor(rule: SerializedRule, lat: number, lon: number, today: Date): RowHours {
+function hoursFor(
+  pick: NonNullable<ReturnType<typeof pickHoursRule<SerializedRule>>>,
+  asOf: string,
+  lat: number,
+  lon: number,
+  today: Date,
+): RowHours {
+  const rule = pick.rule;
+  const base = { citation: rule.citation, confidence: rule.confidence, asOf };
+  if (pick.kind === "varies") {
+    return { ...base, text: pick.why === "section" ? "Hours vary by section" : "Hours vary by species" };
+  }
   const d = rule.detail as Record<string, unknown>;
   const w = fishingHoursWindow(d, lat, lon, today);
   const text = w
@@ -29,7 +42,7 @@ function hoursFor(rule: SerializedRule, lat: number, lon: number, today: Date): 
     : d.basis === "any_hour"
       ? "Any hour"
       : rule.summary;
-  return { text, citation: rule.citation, confidence: rule.confidence };
+  return { ...base, text };
 }
 
 /** `state.ready` carries today's resolved status; `not-cached` = offline and never downloaded. */
@@ -62,10 +75,8 @@ export function useNearbyFish(lat: number | null, lon: number | null): FishRow[]
         try {
           const ds = await loadWater(w.slug);
           const res = resolveDataset(ds, today);
-          const rule = res.scopes
-            .flatMap((sc) => sc.rules)
-            .find((r) => r.ruleType === "fishing_hours" && r.polarity !== "asserts_none");
-          const hours = rule ? hoursFor(rule, w.lat, w.lon, new Date()) : null;
+          const pick = pickHoursRule(res.scopes);
+          const hours = pick ? hoursFor(pick, res.dataAsOf, w.lat, w.lon, new Date()) : null;
           return { slug: w.slug, name: w.name, waterType: w.waterType, distanceMi: w.distanceMi, states: w.states, hours, state: { kind: "ready", status: res.status.overall } };
         } catch (err) {
           return { ...w, state: err instanceof WaterNotCachedError ? { kind: "not-cached" } : { kind: "error" } };
@@ -79,6 +90,19 @@ export function useNearbyFish(lat: number | null, lon: number | null): FishRow[]
     };
   }, [lat, lon]);
   return rows;
+}
+
+function HoursLine({ h }: { h: RowHours }) {
+  const varies = h.text.startsWith("Hours vary");
+  const label = `${varies ? "" : "Hrs "}${h.text}`;
+  const cite = [h.citation, h.confidence].filter(Boolean).join(" · ");
+  const full = `${label} · ${cite} · data as of ${h.asOf} · tap for rules`;
+  return (
+    <span className="kp-trip-water-hours" title={full} aria-label={full}>
+      <span>{label}</span>
+      <span className="kp-trip-water-cite">{cite} ›</span>
+    </span>
+  );
 }
 
 const fmtMi = (d: number) => `${d < 10 ? d.toFixed(1) : Math.round(d)} mi`;
@@ -139,14 +163,7 @@ export default function FishHalf({
                     <StatusStamp status="unknown" size="sm" short />
                   )}
                 </span>
-                {r.hours && (
-                  <span
-                    className="kp-trip-water-hours"
-                    title={`${r.hours.citation ?? "Fishing hours"} · ${r.hours.confidence} confidence · tap for rules`}
-                  >
-                    Hrs {r.hours.text}
-                  </span>
-                )}
+                {r.hours && <HoursLine h={r.hours} />}
                 {r.state.kind === "not-cached" && <span className="kp-trip-water-note">Not downloaded</span>}
                 {r.state.kind === "error" && <span className="kp-trip-water-note">Couldn’t load rules</span>}
               </button>

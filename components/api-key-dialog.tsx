@@ -23,6 +23,7 @@ export default function ApiKeyDialog({ open, onClose }: Props) {
   const [input, setInput] = useState(apiKey ?? "");
   const [show, setShow] = useState(false);
   const { licenses, setExpiry } = useLicense();
+  const [resetN, setResetN] = useState(0);
 
   if (!open) return null;
 
@@ -182,11 +183,19 @@ export default function ApiKeyDialog({ open, onClose }: Props) {
                 <input
                   id={`lic-${st}`}
                   type="date"
-                  value={cur}
-                  onChange={(e) => setExpiry(st, e.target.value || null)}
+                  key={`${st}-${resetN}`}
+                  defaultValue={cur}
+                  // Uncontrolled so a half-typed date segment isn't reset. A cleared/half-typed date emits "" mid-edit; only a full YYYY-MM-DD commits.
+                  // Removal is the explicit Remove button.
+                  onChange={(e) => {
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(e.target.value)) setExpiry(st, e.target.value);
+                  }}
                 />
                 {cur && (
-                  <button type="button" onClick={() => setExpiry(st, null)} aria-label={`Remove ${st} license`}>
+                  <button type="button" onClick={() => {
+                      setExpiry(st, null);
+                      setResetN((n) => n + 1);
+                    }} aria-label={`Remove ${st} license`}>
                     Remove
                   </button>
                 )}

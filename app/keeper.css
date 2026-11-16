@@ -1326,7 +1326,8 @@
 .kp .kp-trip-water-note { font-size: 11px; font-weight: 600; color: var(--kp-unknown); }
 .kp .kp-trip-sun { flex-basis: 100%; white-space: nowrap; font: 500 10.5px var(--kp-font-mono); letter-spacing: 0; text-transform: none; color: var(--kp-ink-64); }
 .kp .kp-trip-license { margin: 0; padding: 6px 8px; border-radius: var(--kp-radius-tag); background: var(--kp-warn-bg); color: var(--kp-brass-ink); font: 500 12px/1.3 var(--kp-font-mono); }
-.kp .kp-trip-water-hours { font: 500 10.5px/1.3 var(--kp-font-mono); color: var(--kp-ink-64); }
+.kp .kp-trip-water-cite { display: block; font-size: 9.5px; color: var(--kp-ink-48); overflow-wrap: anywhere; }
+.kp .kp-trip-water-hours { display: block; font: 500 10.5px/1.3 var(--kp-font-mono); color: var(--kp-ink-64); }
 .kp .kp-trip-pending { font: 500 12px var(--kp-font-mono); color: var(--kp-ink-48); }
 .kp .kp-trip-cta {
   display: flex;

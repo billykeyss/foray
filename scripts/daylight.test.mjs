@@ -78,3 +78,15 @@ test("fishing_hours window from TimeSpec", () => {
   assert.equal(fishingHoursWindow({ basis: "any_hour" }, 39, -120, d), null);
   assert.equal(fishingHoursWindow({ allowed_from: { anchor: "dawn" }, allowed_to: "5:00 PM" }, 39, -120, d), null);
 });
+
+test("pickHoursRule: water-wide wins; reach/species rules never shown as water-wide", async () => {
+  const { pickHoursRule } = await import("../lib/fishing-hours.ts");
+  const fh = (species = []) => ({ ruleType: "fishing_hours", polarity: "applies", species });
+  const water = fh(), reach = fh();
+  assert.equal(pickHoursRule([{ kind: "reach", rules: [reach] }, { kind: "water", rules: [water] }]).rule, water);
+  assert.deepEqual(pickHoursRule([{ kind: "reach", rules: [reach] }, { kind: "water", rules: [] }]), { kind: "varies", rule: reach, why: "section" });
+  const sp = fh(["trout"]);
+  assert.equal(pickHoursRule([{ kind: "water", rules: [sp] }]).why, "species");
+  assert.equal(pickHoursRule([{ kind: "water", rules: [{ ...water, polarity: "asserts_none" }] }]), null);
+  assert.equal(pickHoursRule([]), null);
+});

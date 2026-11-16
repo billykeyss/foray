@@ -43,3 +43,28 @@ export function fishingHoursWindow(detail: Spec, lat: number, lon: number, date:
 
 /** "6:12 AM" in device time. */
 export const fmtClock = (d: Date) => d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+
+export interface HoursScope {
+  kind: "water" | "reach";
+  scope: string;
+  rules: Array<{ ruleType: string; polarity: string; species: string[] }>;
+}
+
+export type HoursPick<R> =
+  | { kind: "water"; rule: R }
+  | { kind: "varies"; rule: R; why: "section" | "species" }
+  | null;
+
+/** Choose which `fishing_hours` rule may be presented as the water's hours. Only an all-species rule
+ *  in the water scope counts as water-wide; reach- or species-specific rules yield "varies". */
+export function pickHoursRule<R extends HoursScope["rules"][number]>(
+  scopes: Array<{ kind: "water" | "reach"; rules: R[] }>,
+): HoursPick<R> {
+  const hours = (s: { rules: R[] }) => s.rules.filter((r) => r.ruleType === "fishing_hours" && r.polarity !== "asserts_none");
+  const water = scopes.filter((s) => s.kind === "water").flatMap(hours);
+  const wide = water.find((r) => r.species.length === 0);
+  if (wide) return { kind: "water", rule: wide };
+  if (water.length) return { kind: "varies", rule: water[0], why: "species" };
+  const reach = scopes.filter((s) => s.kind === "reach").flatMap(hours);
+  return reach.length ? { kind: "varies", rule: reach[0], why: "section" } : null;
+}
