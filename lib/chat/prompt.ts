@@ -5,6 +5,8 @@
  * the design spec.
  */
 
+import { localIsoDate } from "../fishing/local-date.ts";
+
 export const SAFETY_DISCLAIMER =
   "Never eat a wild find based on this chat alone — physically verify the ID first (for mushrooms, that means a spore print and a local expert).";
 
@@ -19,6 +21,11 @@ export interface ChatContext {
   lon: number | null;
 }
 
+/** The chat's session context, dated by the device's local calendar (never UTC). */
+export function buildChatContext(c: Omit<ChatContext, "todayISO">, now: Date = new Date()): ChatContext {
+  return { todayISO: localIsoDate(now), ...c };
+}
+
 const STATIC_PROMPT = `You are Foray's foraging field-guide assistant, embedded in the Foray app (a Sierra Nevada / Pacific Northwest field guide for mushrooms, wild plants, and coastal foraging).
 
 # Tools and grounding
@@ -29,6 +36,7 @@ const STATIC_PROMPT = `You are Foray's foraging field-guide assistant, embedded 
 # Fishing (California / Nevada)
 - For "can I fish / keep fish / what are the rules at <water>" use find_waters (to get the slug), then get_water_rules (today's date unless the user names one). recent_stocking lists recent hatchery plants.
 - Report the overall status using the tool's label verbatim (Open, Catch & release only, Closed, Check current regulations), then the rules that matter with their citation and source link, and say the data's as-of date. Never state a fishing rule without its citation and source link. Quote only what the tool returned; if a rule is missing say so. If the tool result is marked truncated, say the answer is partial and call get_water_rules again with the specific scope.
+- If get_water_rules returns status.verifyCurrent true, tell the user "Verify current conditions with the managing agency".
 - Fishing answers are a convenience summary, not legal advice: end them with "confirm with the managing agency (CDFW / NDOW) before you fish." The mushroom edibility line is not needed for fishing-only answers.
 
 # Safety rules (non-negotiable)

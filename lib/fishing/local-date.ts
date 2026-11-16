@@ -4,3 +4,9 @@ export function localIsoDate(d: Date = new Date()): string {
   const day = String(d.getDate()).padStart(2, "0");
   return `${d.getFullYear()}-${m}-${day}`;
 }
+
+/** Milliseconds from `now` until the next local midnight (DST-aware: uses the device's calendar). */
+export function msUntilNextLocalMidnight(now: Date = new Date()): number {
+  const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  return next.getTime() - now.getTime();
+}

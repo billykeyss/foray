@@ -19,7 +19,8 @@ import { selectCandidates, scoreCandidates } from "../spot-finder.ts";
 import type { JournalEntry } from "../journal.ts";
 import { searchWaters } from "../fishing/search.ts";
 import { nearestWaters } from "../fishing/nearby.ts";
-import { loadWater as defaultLoadWater } from "../fishing/load.ts";
+import { loadWater as defaultLoadWater, WaterNotCachedError, WaterNotFoundError } from "../fishing/load.ts";
+import { FISH_WATERS } from "../fishing/waters-index.ts";
 import { resolveDataset, STATUS_LABEL } from "../fishing/resolve.ts";
 import { isValidIsoDate } from "../fishing/engine/index.ts";
 import { localIsoDate } from "../fishing/local-date.ts";
@@ -442,15 +443,24 @@ function findWatersTool(input: { query?: string; near?: boolean; limit?: number 
   return capJson(searchWaters(q, limit).map((w) => ({ slug: w.slug, name: w.name, waterType: w.waterType, states: w.states })));
 }
 
+const KNOWN_WATER_SLUGS = new Set(FISH_WATERS.map((w) => w.slug));
+
 async function getWaterRulesTool(input: { slug?: string; date?: string; scope?: string }, ctx: ToolContext): Promise<string> {
   const slug = String(input.slug ?? "");
   const on = input.date ?? localIsoDate();
   if (!isValidIsoDate(on)) return `Error: invalid date "${on}" — use a real calendar date as YYYY-MM-DD.`;
+  const notFound = `Error: no fishing water with slug "${slug}". Call find_waters to look up the right slug.`;
+  if (!KNOWN_WATER_SLUGS.has(slug)) return notFound;
   let ds: WaterDataset;
   try {
     ds = await (ctx.loadWater ?? defaultLoadWater)(slug);
-  } catch {
-    return `Error: no fishing water with slug "${slug}". Call find_waters to look up the right slug.`;
+  } catch (err) {
+    if (err instanceof WaterNotFoundError) return notFound;
+    if (err instanceof WaterNotCachedError) {
+      return `Error: rules for "${slug}" aren't downloaded on this device — connect once to save them. Tell the user; don't guess the rules.`;
+    }
+    const why = err instanceof Error ? err.message : String(err);
+    return `Error: couldn't load the rules for "${slug}" (${why}). Tell the user to try again; don't guess the rules.`;
   }
   const r = resolveDataset(ds, on);
   const rule = (x: (typeof r.scopes)[number]["rules"][number]) => ({
@@ -617,6 +627,9 @@ function readJournalTool(input: { limit?: number }): unknown[] {
     if (!raw) return [];
     const entries: JournalEntry[] = JSON.parse(raw);
     let out = entries.slice(0, Math.min(input.limit ?? 10, 25)).map((e) => ({
+      // Catches are fishing log entries, not foraging finds; legacy entries have no kind (= find).
+      kind: e.kind === "catch" ? "catch" : "find",
+      ...(e.catch ? { catch: e.catch } : {}),
       date: e.date,
       species: e.species,
       location: e.location,

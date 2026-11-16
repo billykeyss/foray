@@ -18,7 +18,7 @@ import {
   type ChatSession,
   type ChatTurn,
 } from "@/lib/chat/store.ts";
-import { SAFETY_DISCLAIMER } from "@/lib/chat/prompt.ts";
+import { buildChatContext, SAFETY_DISCLAIMER } from "@/lib/chat/prompt.ts";
 import {
   probeChatProxy,
   verifyChatPassword,
@@ -163,13 +163,7 @@ export default function ChatPanel() {
       const result = await runChatTurn({
         auth,
         messages: turnsToMessages(withUser.turns) as Parameters<typeof runChatTurn>[0]["messages"],
-        context: {
-          todayISO: new Date().toISOString().slice(0, 10),
-          regionLabel: regionDef.label,
-          locationLabel,
-          lat,
-          lon,
-        },
+        context: buildChatContext({ regionLabel: regionDef.label, locationLabel, lat, lon }),
         toolContext: { lat, lon, locationLabel, regionId: regionDef.id },
         signal: controller.signal,
         callbacks: {

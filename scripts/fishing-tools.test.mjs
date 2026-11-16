@@ -133,3 +133,46 @@ test("get_water_rules: scope argument returns that scope's full rules with citat
   const bad = await executeTool("get_water_rules", { slug: "eel-river", scope: "nope" }, ctx, () => {});
   assert.match(bad, /no scope named/);
 });
+
+test("get_water_rules: unknown slug, not-downloaded and other load failures are told apart", async () => {
+  const { WaterNotCachedError } = await import("../lib/fishing/load.ts");
+  const unknown = await executeTool("get_water_rules", { slug: "nope-lake" }, { ...ctx, loadWater: async () => { throw new Error("should not be called"); } }, () => {});
+  assert.match(unknown, /no fishing water with slug "nope-lake"/);
+  const offline = await executeTool("get_water_rules", { slug: "donner-lake" }, { ...ctx, loadWater: async (s) => { throw new WaterNotCachedError(s); } }, () => {});
+  assert.match(offline, /rules for "donner-lake" aren't downloaded on this device — connect once/);
+  assert.doesNotMatch(offline, /no fishing water/);
+  const broken = await executeTool("get_water_rules", { slug: "donner-lake" }, { ...ctx, loadWater: async () => { throw new Error("HTTP 500"); } }, () => {});
+  assert.match(broken, /couldn't load the rules for "donner-lake" \(HTTP 500\)/);
+  assert.doesNotMatch(broken, /no fishing water/);
+});
+
+test("prompt tells the model to relay the verifyCurrent advisory", () => {
+  const { staticText } = buildSystemPrompt({ todayISO: "2026-07-01", regionLabel: "x", locationLabel: "x", lat: null, lon: null });
+  assert.match(staticText, /verifyCurrent/);
+  assert.ok(staticText.includes('"Verify current conditions with the managing agency"'));
+});
+
+test("get_water_rules exposes status.verifyCurrent for a verifyCurrent water", async () => {
+  const w = FISH_WATERS.find((x) => x.verifyCurrent);
+  assert.ok(w, "some water is verifyCurrent");
+  const j = JSON.parse(await executeTool("get_water_rules", { slug: w.slug, date: "2026-07-01" }, ctx, () => {}));
+  assert.equal(j.status.verifyCurrent, true);
+});
+
+test("read_journal includes kind and catch so catches aren't read as finds", async () => {
+  const prev = globalThis.localStorage;
+  const entries = [
+    { id: "a", date: "2026-07-01", species: "Rainbow trout", location: "Donner Lake", notes: "", kind: "catch", catch: { waterSlug: "donner-lake", species: "Rainbow trout", length_in: 14, kept: false } },
+    { id: "b", date: "2026-06-30", species: "Morel", location: "Burn", notes: "" },
+  ];
+  Object.defineProperty(globalThis, "localStorage", { configurable: true, value: { getItem: () => JSON.stringify(entries) } });
+  try {
+    const out = JSON.parse(await executeTool("read_journal", {}, ctx, () => {}));
+    assert.equal(out[0].kind, "catch");
+    assert.deepEqual(out[0].catch, entries[0].catch);
+    assert.equal(out[1].kind, "find");
+    assert.ok(!("catch" in out[1]));
+  } finally {
+    Object.defineProperty(globalThis, "localStorage", { configurable: true, value: prev });
+  }
+});
