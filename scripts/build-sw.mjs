@@ -15,6 +15,7 @@ const INCLUDE = [
   /^icons\/.+\.png$/i,
   /^foray-icon\.png$/i, // in-app logo
   /^manifest\.webmanifest$/i,
+  /^fishing\/.+\.json$/i, // offline fishing rules + recent stocking (public/fishing)
 ];
 const EXCLUDE = [/^sw\.js$/i, /\.map$/i, /^img\//i];
 
@@ -34,18 +35,21 @@ async function precacheEntries() {
     (f) => INCLUDE.some((re) => re.test(f)) && !EXCLUDE.some((re) => re.test(f)),
   );
   const entries = [];
+  let payload = 0;
   for (const rel of picked) {
     const buf = await readFile(path.join(OUT, rel));
+    payload += buf.length;
     const revision = createHash("md5").update(buf).digest("hex");
     // URL-encode each path segment so entries for dynamic-route chunks
     // (…/catalog/[id]/page.js) match the browser's encoded request (%5Bid%5D).
     const url = "/" + rel.split("/").map(encodeURIComponent).join("/");
     entries.push({ url, revision });
   }
-  return entries.sort((a, b) => a.url.localeCompare(b.url));
+  entries.sort((a, b) => a.url.localeCompare(b.url));
+  return { entries, payload };
 }
 
-const entries = await precacheEntries();
+const { entries, payload } = await precacheEntries();
 await build({
   entryPoints: [path.join(ROOT, "sw/index.ts")],
   outfile: path.join(OUT, "sw.js"),
@@ -57,3 +61,4 @@ await build({
 });
 const bytes = entries.reduce((n, e) => n + e.url.length, 0);
 console.log(`SW built: ${entries.length} precache entries (${bytes} url bytes) → out/sw.js`);
+console.log(`Precache payload: ${payload} bytes (${(payload / 1024 / 1024).toFixed(2)} MB)`);

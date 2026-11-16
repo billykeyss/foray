@@ -52,7 +52,30 @@ const serwist = new Serwist({
       }),
     },
     {
-      // Basemaps + the water overlay (Esri canvas/imagery, USGS topo/hydro).
+      // Esri World Imagery satellite tiles. Must precede the basemap matcher,
+      // which also matches server.arcgisonline.com.
+      matcher: ({ url }) =>
+        url.hostname === "server.arcgisonline.com" && url.pathname.includes("/World_Imagery/"),
+      handler: new CacheFirst({
+        cacheName: "foray-imagery",
+        plugins: [
+          new ExpirationPlugin({ maxEntries: 4000, maxAgeSeconds: 60 * 60 * 24 * 30, purgeOnQuotaError: true }),
+        ],
+      }),
+    },
+    {
+      // AWS terrarium terrain (DEM) tiles for MapLibre terrain/hillshade.
+      matcher: ({ url }) =>
+        url.hostname === "s3.amazonaws.com" && url.pathname.startsWith("/elevation-tiles-prod/"),
+      handler: new CacheFirst({
+        cacheName: "foray-terrain",
+        plugins: [
+          new ExpirationPlugin({ maxEntries: 4000, maxAgeSeconds: 60 * 60 * 24 * 30, purgeOnQuotaError: true }),
+        ],
+      }),
+    },
+    {
+      // Other basemaps + the water overlay (Esri canvas, USGS topo/hydro).
       matcher: ({ url }) =>
         url.hostname === "server.arcgisonline.com" || url.hostname === "basemap.nationalmap.gov",
       handler: new CacheFirst({
@@ -66,9 +89,12 @@ const serwist = new Serwist({
       }),
     },
     {
-      // LANDFIRE forest/vegetation-type WMS tiles — cache what the user has
-      // panned over so the forest overlay works partially offline.
-      matcher: ({ url }) => url.hostname === "edcintl.cr.usgs.gov",
+      // LANDFIRE forest/vegetation-type WMS tiles plus the USFS national-forest
+      // and BLM land-ownership overlays — cache what the user has panned over.
+      matcher: ({ url }) =>
+        url.hostname === "edcintl.cr.usgs.gov" ||
+        url.hostname === "apps.fs.usda.gov" ||
+        url.hostname === "gis.blm.gov",
       handler: new CacheFirst({
         cacheName: "foray-forest",
         plugins: [
