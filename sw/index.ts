@@ -16,7 +16,13 @@ const serwist = new Serwist({
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: true,
-  precacheOptions: { cleanupOutdatedCaches: true },
+  precacheOptions: {
+    cleanupOutdatedCaches: true,
+    // Static pages read their target from the query string (/fish/water?w=<slug>, /?spot=<slug>),
+    // so these params must not defeat the precache match when offline. Serwist's default only
+    // ignores utm_* and fbclid.
+    ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^w$/, /^spot$/, /^on$/],
+  },
   runtimeCaching: [
     {
       // Self-hosted field-guide photos in the public GCS bucket.

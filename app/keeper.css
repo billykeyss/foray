@@ -1059,3 +1059,41 @@
   .kp .sheet { transition: none; }
   .kp .stagger > *, .kp .sk-line, .kp .sk-card, .kp .status-stamp--thunk, .kp .scrim { animation: none; }
 }
+/* Task 8: rules sheet / water page additions */
+.kp .rule-source { flex-wrap: wrap; row-gap: 4px; }
+.kp .rule-confidence {
+  font-family: var(--kp-font-mono);
+  color: var(--kp-ink-48);
+  text-transform: capitalize;
+  margin-right: auto;
+}
+.kp .rule-confidence[data-confidence="low"],
+.kp .rule-confidence[data-confidence="medium"] { color: var(--kp-brass-ink); }
+.kp .btn-retry { cursor: pointer; font: inherit; font-weight: 600; }
+.kp .reach-map-cue { cursor: pointer; }
+.kp .recip-cond { display: block; color: var(--kp-ink-64); font-size: 12px; }
+.kp .sheet-notice { margin: 4px 0 12px; color: var(--kp-ink-64); font-size: 13px; line-height: 1.45; }
+.kp .sheet-foot .legal { display: block; margin-top: 6px; font-weight: 600; color: var(--kp-ink); }
+/* Standalone water page */
+.kp.water-page {
+  min-height: 100dvh;
+  background: var(--kp-grain) 0 0 / 4px 4px, var(--kp-bone);
+  color: var(--kp-ink);
+  padding: 8px 0 calc(90px + var(--kp-safe-bottom));
+}
+.kp .water-page-inner { max-width: 720px; margin: 0 auto; padding: 0 4px; }
+.kp .water-page-inner .sheet-header { padding-top: 12px; }
+.kp .water-page-inner .sheet-title { margin-right: 0; }
+.kp .water-page-back {
+  display: inline-block; margin: 10px 18px 0; font-size: 13px; font-weight: 600;
+  color: var(--kp-river); text-decoration: none;
+}
+.kp .water-page-body { padding: 0 18px 24px; }
+@media (min-width: 768px) {
+  .kp .sheet-peek { padding-top: 22px; }
+}
+/* Phone: the sheet (and its peek) must sit above the fixed bottom tab bar (z-50). */
+@media (max-width: 767px) {
+  .kp .sheet { z-index: 60; }
+  .kp .scrim { z-index: 55; }
+}
