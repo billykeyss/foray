@@ -24,6 +24,7 @@ export default function GuideSegmented({
   const isTrees = pathname.startsWith("/trees");
   const isPlants = pathname.startsWith("/plants");
   const isOcean = pathname.startsWith("/ocean");
+  const isFish = pathname.startsWith("/fish");
 
   return (
     <div
@@ -32,6 +33,8 @@ export default function GuideSegmented({
       aria-label="Guide section"
       style={{
         display: "inline-flex",
+        maxWidth: "100%",
+        overflowX: "auto",
         padding: 4,
         border: "1px solid var(--line)",
         borderRadius: 999,
@@ -67,6 +70,12 @@ export default function GuideSegmented({
         count={oceanCount}
         icon={<WaveIcon />}
       />
+      <Segment
+        href="/fish"
+        active={isFish}
+        label="Fish"
+        icon={<FishIcon />}
+      />
     </div>
   );
 }
@@ -81,7 +90,7 @@ function Segment({
   href: string;
   active: boolean;
   label: string;
-  count: number;
+  count?: number;
   icon: React.ReactNode;
 }) {
   return (
@@ -113,15 +122,17 @@ function Segment({
         {icon}
       </span>
       {label}
-      <span
-        style={{
-          opacity: active ? 0.7 : 0.5,
-          fontSize: 9.5,
-          letterSpacing: "0.1em",
-        }}
-      >
-        {count}
-      </span>
+      {count != null && (
+        <span
+          style={{
+            opacity: active ? 0.7 : 0.5,
+            fontSize: 9.5,
+            letterSpacing: "0.1em",
+          }}
+        >
+          {count}
+        </span>
+      )}
     </Link>
   );
 }
@@ -194,6 +205,27 @@ function WaveIcon() {
       {/* Two stacked swells */}
       <path d="M2 9 Q6 5, 10 9 T18 9 Q20 9, 22 8" />
       <path d="M2 15 Q6 11, 10 15 T18 15 Q20 15, 22 14" />
+    </svg>
+  );
+}
+
+function FishIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinejoin="round"
+      strokeLinecap="round"
+      aria-hidden
+    >
+      {/* Side-on fish: body, tail, eye */}
+      <path d="M2 12 Q8 5, 15 8 Q18 9.5, 19 12 Q18 14.5, 15 16 Q8 19, 2 12 Z" />
+      <path d="M19 12 L22.5 8.5 L22.5 15.5 Z" />
+      <circle cx="7" cy="11" r="0.8" fill="currentColor" />
     </svg>
   );
 }

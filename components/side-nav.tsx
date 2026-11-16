@@ -8,17 +8,15 @@ import RegionPicker from "@/components/region-picker";
 import SettingsButton from "@/components/settings-button";
 
 const tabs = [
-  { href: "/", label: "Today" },
-  { href: "/map", label: "Map" },
+  { href: "/", label: "Map" },
   { href: "/catalog", label: "Guide" },
-  { href: "/charts", label: "Charts" },
   { href: "/journal", label: "Journal" },
   { href: "/chat", label: "Ask" },
 ];
 
 // Trees, Greens and Tide live under Guide — reached via the in-page segmented
 // control, so the Guide entry stays highlighted on those routes.
-const GUIDE_ROUTES = ["/catalog", "/trees", "/plants", "/ocean"];
+const GUIDE_ROUTES = ["/catalog", "/trees", "/plants", "/ocean", "/fish"];
 
 export default function SideNav() {
   const pathname = usePathname();
@@ -29,7 +27,7 @@ export default function SideNav() {
       className="hidden lg:flex flex-col fixed left-0 top-0 bottom-0 w-[260px] z-40"
       style={{
         borderRight: "1px solid var(--line)",
-        background: "rgba(240, 228, 200, 0.6)",
+        background: "color-mix(in srgb, var(--kp-bone) 92%, transparent)",
         backdropFilter: "blur(12px)",
         WebkitBackdropFilter: "blur(12px)",
         padding: "32px 24px",
@@ -93,8 +91,9 @@ export default function SideNav() {
               style={{
                 padding: "12px 14px",
                 borderRadius: 12,
-                background: active ? "var(--moss)" : "transparent",
-                color: active ? "var(--parchment)" : "var(--moss)",
+                background: active ? "var(--kp-ink)" : "transparent",
+                color: active ? "var(--kp-bone)" : "var(--kp-ink)",
+                boxShadow: active ? "inset 3px 0 0 var(--kp-amber)" : "none",
                 transition: "background 0.15s ease",
               }}
             >
@@ -168,7 +167,7 @@ export default function SideNav() {
             : "—"}
         </div>
         <Link
-          href="/map"
+          href="/"
           className="font-mono mt-3 inline-block"
           style={{
             fontSize: 9.5,

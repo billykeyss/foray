@@ -1,4 +1,5 @@
 import "./globals.css";
+import "./keeper.css";
 import type { Metadata, Viewport } from "next";
 import { Fraunces, Inter, IBM_Plex_Mono } from "next/font/google";
 import { LocationProvider } from "@/lib/location-context";

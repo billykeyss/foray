@@ -14,7 +14,7 @@ interface Props {
 }
 
 const CSS = `
-.kp-ctl{--kp-bone:#f3efe4;--kp-ink:#1a2b22;--kp-river:#2f5d78;--kp-amber:#e0a043;--kp-amber-ink:#8c5a0e;
+.kp-ctl{
   position:absolute;right:12px;top:calc(116px + env(safe-area-inset-top));z-index:5;display:flex;flex-direction:column;gap:8px}
 @media (min-width:1024px){.kp-ctl{top:calc(12px + env(safe-area-inset-top))}}
 .kp-ctl button{min-width:44px;min-height:44px;padding:0 10px;border-radius:12px;border:1px solid var(--kp-ink);
