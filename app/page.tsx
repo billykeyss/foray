@@ -1,678 +1,247 @@
 "use client";
 
 import dayjs from "dayjs";
-import Link from "next/link";
-import { useMemo, useState } from "react";
-import SporeGauge from "@/components/spore-gauge";
-import ForecastStrip from "@/components/forecast-strip";
+import dynamic from "next/dynamic";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import LocationChooser from "@/components/location-chooser";
-import SpeciesPhoto from "@/components/species-photo";
-import SpotFinder from "@/components/spot-finder";
-import ForageSection from "@/components/forage-section";
+import TripCard from "@/components/trip-card/trip-card";
+import ForageHalf, { type ForagePick } from "@/components/trip-card/forage-half";
+import FishHalf, { fishStatuses, useNearbyFish } from "@/components/trip-card/fish-half";
+import TodayDetail from "@/components/trip-card/today-detail";
+import { RulesSheet, type Line } from "@/components/fishing/rules-sheet";
 import { useLocation } from "@/lib/location-context";
 import { useRegion } from "@/lib/region-context";
-import { computeSporeScore, suggestSpecies, scoreSpecies } from "@/lib/weather";
-import { REGISTRY } from "@/lib/forecast/registry";
+import { useUnits } from "@/lib/units-context";
+import { computeSporeScore, suggestSpeciesList, type DailyWeather } from "@/lib/weather";
+import { tripHeadline } from "@/lib/trip-headline.ts";
+import { FISH_WATERS } from "@/lib/fishing/waters-index.ts";
 
-export default function TodayPage() {
-  const { weather, loading, error, lat, lon } = useLocation();
-  const { filterTerms } = useRegion();
+const FieldMap = dynamic(() => import("@/components/field-map/field-map.tsx"), {
+  ssr: false,
+  loading: () => (
+    <div
+      className="absolute inset-0 grid place-items-center font-mono"
+      style={{ background: "var(--parchment-deep)", fontSize: 10, letterSpacing: "0.22em", color: "var(--ink-soft)" }}
+    >
+      LOADING TERRAIN…
+    </div>
+  ),
+});
 
-  // Non-mushroom forecasters (plants, shellfish) surface as their own sections
-  // beside the spore gauge. Hide a section entirely when its kind doesn't occur
-  // in the selected region; show its empty state only when it does but nothing's
-  // in season now.
-  const sections = useMemo(() => {
-    const env = { weather, now: new Date(), lat: lat ?? 0, lon: lon ?? 0 };
-    return REGISTRY
-      .filter((f) => f.kind !== "mushroom")
-      .filter((f) => f.hasRegionCoverage?.(filterTerms) ?? true)
-      .map((f) => ({
-        key: f.kind,
-        title: f.title,
-        emptyState: f.emptyState,
-        items: f.suggest(env, filterTerms),
-      }));
-  }, [weather, lat, lon, filterTerms]);
+const WATER_BY_SLUG = new Map(FISH_WATERS.map((w) => [w.slug, w]));
+const SAFE_TO_SUGGEST = new Set(["choice", "edible", "edible-with-caution", "edible-when-cooked"]);
+/** Peek height of the phone trip card, as a fraction of the viewport (matches .kp-trip in keeper.css). */
+const PEEK = 0.46;
 
-  const reading = useMemo(
-    () => (weather.length ? computeSporeScore(weather) : null),
-    [weather]
-  );
-  const species = useMemo(
-    () => (reading ? suggestSpecies(reading, filterTerms) : null),
-    [reading, filterTerms]
-  );
-  const speciesScore = useMemo(
-    () => (species && reading ? scoreSpecies(species, reading) : null),
-    [species, reading]
-  );
-
-  return (
-    <main className="relative z-10 px-6 pt-14 lg:px-12 lg:pt-16 lg:max-w-[1280px] 2xl:max-w-none 2xl:px-16 2xl:pt-12">
-      <div className="running-head">
-        <span className="chapter">Chapter I · The Day&rsquo;s Reading</span>
-        <span className="center">Foray · The Field Book · No. CCCXVII</span>
-        <span className="right">001</span>
-      </div>
-
-      <header>
-        <LocationChooser />
-
-        <h1
-          className="title-hero mt-4 2xl:mt-6"
-          style={{ fontSize: "clamp(38px, 8vw, 124px)" }}
-        >
-          {dayjs().format("dddd")}{" "}
-          <em>{reading?.hook ?? "is loading."}</em>
-        </h1>
-        <div
-          className="font-mono mt-2 2xl:mt-3"
-          style={{
-            fontSize: 10,
-            letterSpacing: "0.22em",
-            textTransform: "uppercase",
-            color: "var(--ink-soft)",
-            opacity: 0.7,
-          }}
-        >
-          {dayjs().format("MMM D")} · Day {reading?.daysSinceRain ?? "—"} after
-          rain
-        </div>
-      </header>
-
-      {loading && !reading && (
-        <div className="text-center py-20 font-mono text-xs tracking-widest opacity-60">
-          GATHERING DATA…
-        </div>
-      )}
-      {error && (
-        <div
-          className="mt-6 card-paper text-sm"
-          style={{ borderColor: "var(--rust)", color: "var(--rust-deep)" }}
-        >
-          {error}
-        </div>
-      )}
-
-      {reading && (
-        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)_minmax(0,1.1fr)] lg:gap-10 lg:mt-12 mt-6">
-          {/* Column 1 — Gauge */}
-          <section className="lg:py-4">
-            <SporeGauge score={reading.score} label={reading.label} />
-            <div className="text-center mt-3">
-              <div
-                className="font-display italic"
-                style={{
-                  fontSize: 22,
-                  fontWeight: 400,
-                  color: "var(--rust)",
-                }}
-              >
-                {reading.label}
-              </div>
-              <div
-                className="font-mono mt-1"
-                style={{
-                  fontSize: 10,
-                  letterSpacing: "0.2em",
-                  color: "var(--moss-soft)",
-                  textTransform: "uppercase",
-                }}
-              >
-                {reading.blurb}
-              </div>
-            </div>
-          </section>
-
-          {/* Column 2 — Stats + Forecast */}
-          <section className="mt-6 lg:mt-0 lg:py-4">
-            <div
-              className="grid grid-cols-[1fr_1px_1fr] py-5"
-              style={{
-                borderTop: "1px solid var(--line)",
-                borderBottom: "1px solid var(--line)",
-              }}
-            >
-              <Stat
-                num={reading.rain7d.toFixed(0)}
-                unit="mm"
-                label="7-day rain"
-              />
-              <div style={{ background: "var(--line)" }} />
-              <Stat
-                num={reading.humidityToday.toFixed(0)}
-                unit="%"
-                label="Humidity"
-              />
-            </div>
-            <div className="grid grid-cols-[1fr_1px_1fr] py-5 mt-[-1px]" style={{ borderBottom: "1px solid var(--line)" }}>
-              <Stat
-                num={reading.tempToday.toFixed(0)}
-                unit="°C"
-                label="Mean temp"
-              />
-              <div style={{ background: "var(--line)" }} />
-              <Stat
-                num={String(reading.daysSinceRain)}
-                unit="d"
-                label="Since rain"
-              />
-            </div>
-
-            <div className="mt-6">
-              <div className="flex justify-between items-baseline mb-3">
-                <h2
-                  className="font-display italic"
-                  style={{
-                    fontSize: 19,
-                    fontWeight: 350,
-                    color: "var(--moss)",
-                  }}
-                >
-                  The week ahead
-                </h2>
-                <Link
-                  href="/charts"
-                  className="font-mono"
-                  style={{
-                    fontSize: 9.5,
-                    letterSpacing: "0.22em",
-                    textTransform: "uppercase",
-                    color: "var(--rust)",
-                  }}
-                >
-                  Detail →
-                </Link>
-              </div>
-              <ForecastStrip days={weather} />
-            </div>
-          </section>
-
-          {/* Column 3 — Species (or honest empty state) */}
-          {species && speciesScore ? (
-            <SpeciesCard
-              species={species}
-              speciesScore={speciesScore}
-              reading={reading}
-            />
-          ) : (
-            <NoSpeciesCard reading={reading} />
-          )}
-        </div>
-      )}
-
-      {sections.map((s) => (
-        <ForageSection key={s.key} items={s.items} title={s.title} emptyState={s.emptyState} />
-      ))}
-
-      {reading && <SpotFinder />}
-    </main>
-  );
+function useMedia(query: string) {
+  const [match, setMatch] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setMatch(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, [query]);
+  return match;
 }
 
-function Stat({
-  num,
-  unit,
-  label,
-}: {
-  num: string;
-  unit: string;
-  label: string;
-}) {
-  return (
-    <div className="px-2.5">
-      <div
-        className="font-display"
-        style={{
-          fontWeight: 350,
-          fontSize: 34,
-          color: "var(--moss)",
-          letterSpacing: "-0.02em",
-          lineHeight: 1,
-        }}
+function useViewportHeight() {
+  const [h, setH] = useState(0);
+  useEffect(() => {
+    const on = () => setH(window.innerHeight);
+    on();
+    window.addEventListener("resize", on);
+    return () => window.removeEventListener("resize", on);
+  }, []);
+  return h;
+}
+
+/** "rain Tue" / "rain today" / "dry week" from the daily forecast (≥1 mm counts as rain). */
+function nextRain(weather: DailyWeather[]): string {
+  const today = dayjs().format("YYYY-MM-DD");
+  const day = weather.find((d) => d.time >= today && d.precipitation >= 1);
+  if (!day) return "dry week";
+  return day.time === today ? "rain today" : `rain ${dayjs(day.time).format("ddd")}`;
+}
+
+function setSpotParam(slug: string | null) {
+  const url = new URL(window.location.href);
+  if (slug) url.searchParams.set("spot", slug);
+  else url.searchParams.delete("spot");
+  window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+}
+
+export default function HomePage() {
+  const { lat, lon, label, weather, elevationM, loading, setLocation } = useLocation();
+  const { filterTerms } = useRegion();
+  const { elevation: elevUnit } = useUnits();
+  const isDesktop = useMedia("(min-width: 1024px)");
+  const sheetBeside = useMedia("(min-width: 768px)");
+  const vh = useViewportHeight();
+
+  const [expanded, setExpanded] = useState(false);
+  const [chooserOpen, setChooserOpen] = useState(false);
+  const [sheetSlug, setSheetSlug] = useState<string | null>(null);
+  const [spotlight, setSpotlight] = useState<Line | null>(null);
+  const [focus, setFocus] = useState<[number, number] | null>(null);
+
+  // The map home doesn't scroll; the card scrolls inside itself.
+  useEffect(() => {
+    const el = document.documentElement;
+    const prev = el.style.overflow;
+    el.style.overflow = "hidden";
+    return () => {
+      el.style.overflow = prev;
+    };
+  }, []);
+
+  const openWater = useCallback((slug: string) => {
+    const w = WATER_BY_SLUG.get(slug);
+    if (!w) return;
+    setSpotlight(null);
+    setSheetSlug(slug);
+    setFocus([w.lon, w.lat]);
+    setSpotParam(slug);
+  }, []);
+
+  // Deep link: /?spot=<slug> opens that water's rules. Unknown slugs are ignored.
+  useEffect(() => {
+    const slug = new URLSearchParams(window.location.search).get("spot");
+    if (slug && WATER_BY_SLUG.has(slug)) openWater(slug);
+    else if (slug) setSpotParam(null);
+  }, [openWater]);
+
+  const closeSheet = useCallback(() => {
+    setSheetSlug(null);
+    setSpotlight(null);
+    setSpotParam(null);
+  }, []);
+
+  const reading = useMemo(() => (weather.length ? computeSporeScore(weather) : null), [weather]);
+  const picks = useMemo<ForagePick[]>(
+    () =>
+      reading
+        ? suggestSpeciesList(reading, filterTerms, 80)
+            .filter((s) => SAFE_TO_SUGGEST.has(s.edibility))
+            .slice(0, 3)
+            .map((s) => ({ id: s.id, name: s.commonNames[0] }))
+        : [],
+    [reading, filterTerms],
+  );
+  const fishRows = useNearbyFish(lat, lon);
+  const hasLocation = lat != null && lon != null;
+  const headline = hasLocation ? tripHeadline(reading, fishStatuses(fishRows)) : tripHeadline(null, []);
+  const kicker = `Today's trip · ${dayjs().format("ddd D MMM")}`.toUpperCase();
+
+  const forageSpots = useMemo(
+    () => (hasLocation ? [{ id: "pin", lon: lon!, lat: lat!, label: label || "Pin" }] : []),
+    [hasLocation, lat, lon, label],
+  );
+  const center: [number, number] = focus ?? [lon ?? -120.18, lat ?? 39.33];
+  const padding = useMemo(
+    () =>
+      isDesktop
+        ? { right: sheetSlug ? 420 : 0 }
+        : { top: 110, bottom: Math.round(vh * PEEK), right: sheetSlug && sheetBeside ? 420 : 0 },
+    [isDesktop, sheetBeside, sheetSlug, vh],
+  );
+
+  const today = weather.find((d) => d.time === dayjs().format("YYYY-MM-DD"));
+  const elevText =
+    elevationM == null
+      ? null
+      : elevUnit === "ft"
+        ? `${Math.round(elevationM * 3.28084).toLocaleString("en-US")} ft`
+        : `${Math.round(elevationM).toLocaleString("en-US")} m`;
+
+  const chipRow = (
+    <div className="kp kp-home-bar">
+      <LocationChooser
+        className="relative flex-1 min-w-0"
+        open={chooserOpen}
+        onOpenChange={setChooserOpen}
+        renderTrigger={({ open, toggle }) => (
+          <button type="button" className="kp-loc-chip" aria-expanded={open} onClick={toggle}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--kp-amber-ink)" strokeWidth={2} strokeLinecap="round" aria-hidden>
+              <path d="M12 21s-7-6-7-11a7 7 0 0 1 14 0c0 5-7 11-7 11z" />
+              <circle cx="12" cy="10" r="2.5" />
+            </svg>
+            <span className="kp-loc-name">
+              {hasLocation ? (label || "Unnamed spot") : loading ? "Loading…" : "Set a location"}
+              {elevText && <span className="kp-loc-elev"> · {elevText}</span>}
+            </span>
+            {today && (
+              <span className="kp-loc-wx">
+                {Math.round(today.tempMax)}° · {nextRain(weather)}
+              </span>
+            )}
+          </button>
+        )}
+      />
+      <button
+        type="button"
+        className="kp-search-btn"
+        aria-label="Search"
+        // Task 10 replaces this with unified search; for now it opens the location search.
+        onClick={() => setChooserOpen(true)}
       >
-        {num}
-        <sup
-          className="font-mono"
-          style={{
-            fontSize: 13,
-            marginLeft: 3,
-            color: "var(--moss-soft)",
-            fontWeight: 400,
-            top: 4,
-          }}
-        >
-          {unit}
-        </sup>
-      </div>
-      <div
-        className="font-mono"
-        style={{
-          fontSize: 9,
-          letterSpacing: "0.2em",
-          textTransform: "uppercase",
-          color: "var(--ink-soft)",
-          marginTop: 6,
-          opacity: 0.7,
-        }}
-      >
-        {label}
-      </div>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
+          <circle cx="11" cy="11" r="7" />
+          <path d="M20 20l-3.5-3.5" />
+        </svg>
+      </button>
     </div>
   );
-}
 
-function SpeciesCard({
-  species,
-  speciesScore,
-  reading,
-}: {
-  species: NonNullable<ReturnType<typeof suggestSpecies>>;
-  speciesScore: ReturnType<typeof scoreSpecies>;
-  reading: NonNullable<ReturnType<typeof computeSporeScore>>;
-}) {
-  const [open, setOpen] = useState(false);
-  const deadlyLookalike = species.lookalikes.find((l) => l.danger === "deadly");
+  const planWithAI = () => {
+    setExpanded(true);
+    // Wait for the sheet to snap open (and the detail to become interactive) before scrolling.
+    setTimeout(() => document.getElementById("spot-finder")?.scrollIntoView({ behavior: "smooth", block: "start" }), 450);
+  };
+
   return (
-    <section
-      className="mt-7 lg:mt-0 p-5 lg:p-6 relative overflow-hidden"
-      style={{
-        background: "var(--moss)",
-        borderRadius: 22,
-        color: "var(--parchment)",
-      }}
-    >
-      <div
-        aria-hidden
-        style={{
-          position: "absolute",
-          right: -30,
-          top: -30,
-          width: 200,
-          height: 200,
-          background:
-            "radial-gradient(circle, rgba(200, 122, 74, 0.28), transparent 65%)",
-          pointerEvents: "none",
-        }}
-      />
-      <div className="flex justify-between items-start">
-        <div
-          className="font-mono"
-          style={{
-            fontSize: 9.5,
-            letterSpacing: "0.24em",
-            color: "var(--cap)",
-            textTransform: "uppercase",
+    <main className="kp-home">
+      <div className="kp-home-map">
+        <FieldMap
+          center={center}
+          base="satellite"
+          overlays={{ forest: false, blm: false }}
+          forageSpots={forageSpots}
+          waters={FISH_WATERS}
+          spotlightLine={spotlight}
+          onWaterTap={openWater}
+          onSpotTap={() => {}}
+          onLongPress={(lo, la) => {
+            setFocus(null);
+            setLocation(la, lo, `Pin ${la.toFixed(2)}, ${lo.toFixed(2)}`);
           }}
-        >
-          Conditions favor
-        </div>
-        <div
-          className="font-mono"
-          style={{
-            fontSize: 10,
-            letterSpacing: "0.06em",
-            color: "rgba(240, 228, 200, 0.5)",
-          }}
-        >
-          {speciesScore.match}/{speciesScore.total} criteria
-        </div>
-      </div>
-      <div
-        className="flex gap-4 items-start mt-3"
-        style={{ position: "relative", zIndex: 1 }}
-      >
-        <Link
-          href={`/catalog/${species.id}`}
-          aria-label={`Open ${species.commonNames[0]} in catalog`}
-          style={{ flex: "none", display: "block" }}
-        >
-          <div
-            style={{
-              width: 76,
-              height: 76,
-              borderRadius: 12,
-              overflow: "hidden",
-              border: "1px solid rgba(240, 228, 200, 0.15)",
-            }}
-          >
-            <SpeciesPhoto
-              speciesId={species.id}
-              scientific={species.scientific}
-              variant="thumb"
-            />
-          </div>
-        </Link>
-        <div
-          className="font-display italic"
-          style={{
-            fontSize: 26,
-            fontWeight: 350,
-            lineHeight: 1.05,
-            color: "var(--parchment)",
-            paddingTop: 2,
-          }}
-        >
-          {species.commonNames[0]}
-          <br />
-          <em style={{ fontStyle: "normal", color: "var(--cap)", fontSize: 18 }}>
-            {species.scientific}
-          </em>
-        </div>
-      </div>
-      <p
-        className="font-body mt-3"
-        style={{
-          fontSize: 14,
-          lineHeight: 1.5,
-          color: "rgba(240, 228, 200, 0.78)",
-          maxWidth: 360,
-        }}
-      >
-        {species.habitat}
-      </p>
-
-      {/* Host trees — the most useful field-level cue */}
-      {species.hostTrees.length > 0 && (
-        <div className="mt-4">
-          <div
-            className="font-mono mb-2"
-            style={{
-              fontSize: 9,
-              letterSpacing: "0.22em",
-              color: "rgba(240, 228, 200, 0.5)",
-              textTransform: "uppercase",
-            }}
-          >
-            {species.trophicMode === "mycorrhizal"
-              ? "Mycorrhizal partners"
-              : species.trophicMode === "parasitic"
-                ? "Host trees"
-                : "Found on / near"}
-          </div>
-          <div className="flex flex-wrap gap-x-3 gap-y-1">
-            {species.hostTrees.slice(0, 5).map((h) => (
-              <span
-                key={h.scientific}
-                className="font-body"
-                style={{
-                  fontSize: 13,
-                  color: "var(--parchment)",
-                  opacity: 0.85,
-                }}
-              >
-                {h.common}{" "}
-                <em
-                  className="font-display italic"
-                  style={{
-                    color: "var(--cap)",
-                    fontSize: 12,
-                    opacity: 0.8,
-                  }}
-                >
-                  {h.scientific}
-                </em>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="flex gap-2 mt-4 flex-wrap">
-        {speciesScore.criteria.map((c) => (
-          <span
-            key={c.label}
-            className="font-mono"
-            style={{
-              fontSize: 9.5,
-              letterSpacing: "0.12em",
-              color: "var(--parchment)",
-              border: `1px solid ${c.met ? "rgba(185, 211, 154, 0.45)" : "rgba(240, 228, 200, 0.2)"}`,
-              borderRadius: 100,
-              padding: "5px 10px",
-              textTransform: "uppercase",
-              background: c.met
-                ? "rgba(185, 211, 154, 0.08)"
-                : "transparent",
-            }}
-          >
-            <span
-              style={{
-                color: c.met ? "#b9d39a" : "rgba(240, 228, 200, 0.4)",
-                marginRight: 5,
-              }}
-            >
-              {c.met ? "✓" : "·"}
-            </span>
-            {c.label}
-          </span>
-        ))}
+          padding={padding}
+        />
       </div>
 
-      {/* Deadly lookalike warning — surfaced before the user has to ask */}
-      {deadlyLookalike && (
-        <div
-          className="mt-4 p-3 flex items-start gap-2.5"
-          style={{
-            background: "rgba(217, 154, 130, 0.12)",
-            border: "1px solid rgba(217, 154, 130, 0.35)",
-            borderRadius: 10,
-          }}
-        >
-          <span
-            className="font-mono"
-            style={{
-              fontSize: 9.5,
-              letterSpacing: "0.22em",
-              color: "#e09b82",
-              textTransform: "uppercase",
-              flex: "none",
-              marginTop: 1,
-            }}
-          >
-            Beware
-          </span>
-          <span
-            className="font-body"
-            style={{
-              fontSize: 13,
-              lineHeight: 1.4,
-              color: "rgba(240, 228, 200, 0.85)",
-            }}
-          >
-            Deadly lookalike:{" "}
-            <em
-              className="font-display italic"
-              style={{ color: "#f0c7b5" }}
-            >
-              {deadlyLookalike.scientific}
-            </em>{" "}
-            — {deadlyLookalike.distinguishingFeature}
-          </span>
-        </div>
-      )}
+      {!isDesktop && chipRow}
 
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="font-mono mt-5 inline-flex items-center gap-2"
-        style={{
-          background: "transparent",
-          border: 0,
-          color: "var(--cap)",
-          fontSize: 10,
-          letterSpacing: "0.2em",
-          textTransform: "uppercase",
-          cursor: "pointer",
-          padding: 0,
-        }}
+      <TripCard
+        kicker={kicker}
+        headline={headline}
+        expanded={expanded}
+        onExpandedChange={setExpanded}
+        onPlan={planWithAI}
+        header={isDesktop ? chipRow : undefined}
+        forage={<ForageHalf reading={reading} loading={loading} picks={picks} />}
+        fish={
+          <FishHalf
+            rows={fishRows}
+            hasLocation={hasLocation}
+            onSetLocation={() => setChooserOpen(true)}
+            onWaterTap={openWater}
+          />
+        }
       >
-        {open ? "Hide details" : "Why this match"}{" "}
-        <span
-          style={{
-            display: "inline-block",
-            transform: open ? "rotate(180deg)" : "none",
-            transition: "transform 0.2s",
-          }}
-        >
-          ↓
-        </span>
-      </button>
+        <TodayDetail reading={reading} />
+      </TripCard>
 
-      {open && (
-        <div
-          className="mt-4 pt-4"
-          style={{ borderTop: "1px solid rgba(240, 228, 200, 0.18)" }}
-        >
-          <ul
-            className="font-mono space-y-1.5"
-            style={{
-              fontSize: 11,
-              color: "rgba(240, 228, 200, 0.78)",
-              letterSpacing: "0.04em",
-              lineHeight: 1.5,
-            }}
-          >
-            <li>
-              <span style={{ color: "var(--cap)" }}>Rain</span> · prefers ≥{" "}
-              {species.conditions.minRain7d}mm/7d · today{" "}
-              {reading.rain7d.toFixed(0)}mm
-            </li>
-            <li>
-              <span style={{ color: "var(--cap)" }}>Days since rain</span> ·
-              prefers {species.conditions.idealDaysSinceRain[0]}–
-              {species.conditions.idealDaysSinceRain[1]}d · today{" "}
-              {reading.daysSinceRain}d
-            </li>
-            <li>
-              <span style={{ color: "var(--cap)" }}>Temperature</span> ·
-              prefers {species.conditions.tempRangeC[0]}–
-              {species.conditions.tempRangeC[1]}°C · today{" "}
-              {reading.tempToday.toFixed(0)}°C
-            </li>
-            {species.conditions.humidityMinPct != null && (
-              <li>
-                <span style={{ color: "var(--cap)" }}>Humidity</span> · prefers
-                ≥ {species.conditions.humidityMinPct}% · today{" "}
-                {reading.humidityToday.toFixed(0)}%
-              </li>
-            )}
-            <li>
-              <span style={{ color: "var(--cap)" }}>Season</span> ·{" "}
-              {species.fruitingMonths.length === 12
-                ? "year-round"
-                : `months ${species.fruitingMonths.join(", ")}`}
-            </li>
-          </ul>
-
-          {species.culinary.flavor && (
-            <p
-              className="font-body italic mt-3"
-              style={{
-                fontSize: 13.5,
-                lineHeight: 1.5,
-                color: "rgba(240, 228, 200, 0.7)",
-              }}
-            >
-              {species.culinary.flavor}
-            </p>
-          )}
-
-          {species.sources.length > 0 && (
-            <div
-              className="font-mono mt-4"
-              style={{
-                fontSize: 9.5,
-                letterSpacing: "0.16em",
-                color: "rgba(240, 228, 200, 0.45)",
-                textTransform: "uppercase",
-              }}
-            >
-              Source: {species.sources[0].name}
-            </div>
-          )}
-
-          <p
-            className="font-body italic mt-3"
-            style={{
-              fontSize: 12.5,
-              color: "rgba(240, 228, 200, 0.45)",
-              lineHeight: 1.5,
-            }}
-          >
-            A heuristic, not an oracle. Always confirm finds with a regional
-            guide before eating. 50 species in the PNW catalog.
-          </p>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function NoSpeciesCard({
-  reading,
-}: {
-  reading: ReturnType<typeof computeSporeScore>;
-}) {
-  const { def: regionDef } = useRegion();
-  const reasons: string[] = [];
-  if (!reading) return null;
-  if (reading.score < 45) {
-    reasons.push("the Spore Score is below 45");
-  }
-  if (reading.rain7d < 5) {
-    reasons.push("there's been less than 5mm of rain in the past week");
-  }
-  const reasonText =
-    reasons.length === 0
-      ? "no in-region species in the catalog matches enough current criteria"
-      : reasons.join(" and ");
-  return (
-    <section
-      className="mt-7 lg:mt-0 p-5 lg:p-6 relative overflow-hidden"
-      style={{
-        background: "rgba(44, 58, 42, 0.06)",
-        border: "1px dashed var(--line)",
-        borderRadius: 22,
-        color: "var(--moss)",
-      }}
-    >
-      <div
-        className="font-mono"
-        style={{
-          fontSize: 9.5,
-          letterSpacing: "0.24em",
-          color: "var(--ink-soft)",
-          textTransform: "uppercase",
-        }}
-      >
-        No favorable species
-      </div>
-      <div
-        className="font-display italic mt-3"
-        style={{
-          fontSize: 24,
-          fontWeight: 350,
-          lineHeight: 1.1,
-          color: "var(--moss)",
-        }}
-      >
-        Nothing&rsquo;s fruiting today.
-      </div>
-      <p
-        className="font-body mt-3"
-        style={{
-          fontSize: 14,
-          lineHeight: 1.5,
-          color: "var(--ink-soft)",
-        }}
-      >
-        With a Spore Score of <strong>{reading.score}</strong>,{" "}
-        {reasonText} in the{" "}
-        <strong>{regionDef.label.toLowerCase()}</strong> catalog. Check back
-        after the next storm — most species in this region need 15–25mm of
-        rain to trigger a flush.
-      </p>
-    </section>
+      {sheetSlug && <RulesSheet key={sheetSlug} slug={sheetSlug} onClose={closeSheet} onSpotlight={setSpotlight} />}
+    </main>
   );
 }

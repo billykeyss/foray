@@ -32,6 +32,8 @@ export interface FieldMapProps {
   onWaterTap: (slug: string) => void;
   onSpotTap: (id: string) => void;
   onLongPress: (lon: number, lat: number) => void;
+  /** Screen insets (px) covered by UI over the map, e.g. the trip card; the camera centres in what's left. */
+  padding?: { top?: number; bottom?: number; left?: number; right?: number };
 }
 
 export default function FieldMap(props: FieldMapProps) {
@@ -152,9 +154,22 @@ export default function FieldMap(props: FieldMapProps) {
     src?.setData(spotFeatures(props.forageSpots));
   }, [props.forageSpots]);
 
+  const pad = props.padding;
+  useEffect(() => {
+    mapRef.current?.setPadding({ top: pad?.top ?? 0, bottom: pad?.bottom ?? 0, left: pad?.left ?? 0, right: pad?.right ?? 0 });
+  }, [pad?.top, pad?.bottom, pad?.left, pad?.right]);
+
   useEffect(() => {
     const map = mapRef.current;
-    if (map) setLine(map, props.spotlightLine);
+    if (!map) return;
+    const line = props.spotlightLine;
+    setLine(map, line);
+    // Bring the highlighted reach into view (within the padded, uncovered part of the map).
+    if (line && line.length > 1) {
+      const b = new maplibregl.LngLatBounds(line[0], line[0]);
+      for (const pt of line) b.extend(pt);
+      map.fitBounds(b, { padding: 48, maxZoom: 14, duration: 600 });
+    }
   }, [props.spotlightLine]);
 
   useEffect(() => {
@@ -171,13 +186,15 @@ export default function FieldMap(props: FieldMapProps) {
   };
 
   return (
-    <div className="absolute inset-0" data-testid="field-map">
+    <div className="field-map absolute inset-0" data-testid="field-map">
       <style>{`
-        .maplibregl-ctrl-top-left{top:calc(116px + env(safe-area-inset-top))}
-        .maplibregl-ctrl-bottom-left{bottom:calc(270px + env(safe-area-inset-bottom))}
+        /* Scoped selectors: must out-rank maplibre-gl.css, which can load after this tag. */
+        .field-map .maplibregl-ctrl-top-left{top:calc(116px + env(safe-area-inset-top))}
+        /* Phone: keep attribution above the trip card's peek (46dvh, see .kp-trip). */
+        .field-map .maplibregl-ctrl-bottom-left{bottom:calc(46dvh + 6px)}
         @media (min-width:1024px){
-          .maplibregl-ctrl-top-left{top:12px}
-          .maplibregl-ctrl-bottom-left{bottom:0}
+          .field-map .maplibregl-ctrl-top-left{top:12px}
+          .field-map .maplibregl-ctrl-bottom-left{bottom:0}
         }
       `}</style>
       <div ref={el} style={{ position: "absolute", inset: 0 }} />

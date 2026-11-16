@@ -139,6 +139,14 @@ export async function fetchWeather(
   lat: number,
   lon: number
 ): Promise<DailyWeather[]> {
+  return (await fetchWeatherWithMeta(lat, lon)).days;
+}
+
+/** Same request as fetchWeather, plus the grid-cell elevation (m) Open-Meteo reports. */
+export async function fetchWeatherWithMeta(
+  lat: number,
+  lon: number
+): Promise<{ days: DailyWeather[]; elevationM: number | null }> {
   const startDate = dayjs().subtract(10, "day").format("YYYY-MM-DD");
   const endDate = dayjs().add(10, "day").format("YYYY-MM-DD");
 
@@ -148,7 +156,7 @@ export async function fetchWeather(
   if (!res.ok) throw new Error(`Open-Meteo: ${await res.text()}`);
   const data = await res.json();
 
-  return data.daily.time.map((time: string, i: number) => ({
+  const days: DailyWeather[] = data.daily.time.map((time: string, i: number) => ({
     time,
     tempMax: data.daily.temperature_2m_max[i],
     tempMin: data.daily.temperature_2m_min[i],
@@ -158,6 +166,7 @@ export async function fetchWeather(
     humidity: data.daily.relative_humidity_2m_mean[i] ?? 0,
     pressure: data.daily.surface_pressure_mean[i] ?? 0,
   }));
+  return { days, elevationM: typeof data.elevation === "number" ? data.elevation : null };
 }
 
 /**

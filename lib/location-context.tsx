@@ -8,13 +8,15 @@ import {
   useMemo,
   useState,
 } from "react";
-import { fetchWeather, DailyWeather } from "./weather";
+import { fetchWeatherWithMeta, DailyWeather } from "./weather";
 
 interface LocationState {
   lat: number | null;
   lon: number | null;
   label: string;
   weather: DailyWeather[];
+  /** Elevation of the weather grid cell, metres (from Open-Meteo); null until loaded. */
+  elevationM: number | null;
   loading: boolean;
   error: string | null;
   setLocation: (lat: number, lon: number, label?: string) => void;
@@ -29,6 +31,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   const [lon, setLon] = useState<number | null>(null);
   const [label, setLabel] = useState<string>("");
   const [weather, setWeather] = useState<DailyWeather[]>([]);
+  const [elevationM, setElevationM] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,8 +61,9 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       setLoading(true);
       setError(null);
       try {
-        const data = await fetchWeather(newLat, newLon);
+        const { days: data, elevationM: elev } = await fetchWeatherWithMeta(newLat, newLon);
         setWeather(data);
+        setElevationM(elev);
         localStorage.setItem(
           STORAGE_KEY,
           JSON.stringify({
@@ -78,8 +82,8 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ lat, lon, label, weather, loading, error, setLocation }),
-    [lat, lon, label, weather, loading, error, setLocation]
+    () => ({ lat, lon, label, weather, elevationM, loading, error, setLocation }),
+    [lat, lon, label, weather, elevationM, loading, error, setLocation]
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

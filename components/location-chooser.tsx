@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "@/lib/location-context";
 
 // Reno-centric foraging waypoints — drives sorted by distance from Reno.
@@ -51,9 +51,25 @@ function groupedPresets(
   return order.map((g) => [g, map.get(g)!]);
 }
 
-export default function LocationChooser() {
+interface Props {
+  /** Controlled open state (optional). Lets another control, e.g. a search button, open the chooser. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Replaces the default pill trigger. */
+  renderTrigger?: (p: { open: boolean; toggle: () => void }) => ReactNode;
+  /** Wrapper class (default "relative inline-block"). */
+  className?: string;
+}
+
+export default function LocationChooser({ open: openProp, onOpenChange, renderTrigger, className }: Props = {}) {
   const { label, lat, lon, setLocation, loading } = useLocation();
-  const [open, setOpen] = useState(false);
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = (v: boolean | ((o: boolean) => boolean)) => {
+    const next = typeof v === "function" ? v(open) : v;
+    setOpenState(next);
+    onOpenChange?.(next);
+  };
   const [query, setQuery] = useState("");
   const [usingGeo, setUsingGeo] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -71,7 +87,7 @@ export default function LocationChooser() {
     };
     document.addEventListener("mousedown", onClick);
     return () => document.removeEventListener("mousedown", onClick);
-  }, [open]);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const q = query.trim().toLowerCase();
   const filtered = q
@@ -103,7 +119,8 @@ export default function LocationChooser() {
   };
 
   return (
-    <div ref={wrapRef} className="relative inline-block">
+    <div ref={wrapRef} className={className ?? "relative inline-block"}>
+      {renderTrigger ? renderTrigger({ open, toggle: () => setOpen((v) => !v) }) : (
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -141,6 +158,7 @@ export default function LocationChooser() {
           ▾
         </span>
       </button>
+      )}
 
       {open && (
         <div

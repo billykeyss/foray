@@ -7,7 +7,8 @@ import { isValidIsoDate } from "@/lib/fishing/engine/index.ts";
 import { WaterHeader, WaterRulesBody, WaterStateNotice, useWaterRules } from "@/components/fishing/rules-sheet";
 
 /** Standalone water page: /fish/water?w=<slug>. Same body as the rules sheet, in page form.
- *  "Show on map" is not offered here (onShowOnMap omitted): the map lives on the home route. */
+ *  Per-reach "Show on map" is not offered here (onShowOnMap omitted); the back link opens the
+ *  map home on this water (/?spot=<slug>) instead. */
 function WaterReader() {
   const params = useSearchParams();
   const slug = params.get("w") ?? "";
@@ -20,7 +21,9 @@ function WaterReader() {
   return (
     <main className="kp water-page">
       <div className="water-page-inner">
-        <Link className="water-page-back" href="/">← Map</Link>
+        <Link className="water-page-back" href={slug ? `/?spot=${encodeURIComponent(slug)}` : "/"}>
+          ← Show on map
+        </Link>
         {ready ? <WaterHeader data={ready} thunk /> : <div className="sheet-header" />}
         <div className="water-page-body">
           {ready ? (
