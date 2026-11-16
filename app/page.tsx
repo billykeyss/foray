@@ -21,6 +21,8 @@ import { settledFishStatuses, tripHeadline } from "@/lib/trip-headline.ts";
 import { FISH_WATERS } from "@/lib/fishing/waters-index.ts";
 import { nearestWaters } from "@/lib/fishing/nearby.ts";
 import { defaultSpotKind, useSavedSpots, type SpotKind } from "@/lib/saved-spots.ts";
+import { useLocalToday } from "@/lib/use-local-today.ts";
+import { NO_OVERLAYS } from "@/components/field-map/layers.ts";
 
 const FieldMap = dynamic(() => import("@/components/field-map/field-map.tsx"), {
   ssr: false,
@@ -70,8 +72,7 @@ function useViewportHeight() {
 }
 
 /** "rain Tue" / "rain today" / "dry week" from the daily forecast (≥1 mm counts as rain). */
-function nextRain(weather: DailyWeather[]): string {
-  const today = dayjs().format("YYYY-MM-DD");
+function nextRain(weather: DailyWeather[], today: string): string {
   const day = weather.find((d) => d.time >= today && d.precipitation >= 1);
   if (!day) return "dry week";
   return day.time === today ? "rain today" : `rain ${dayjs(day.time).format("ddd")}`;
@@ -91,6 +92,8 @@ export default function HomePage() {
   const isDesktop = useMedia("(min-width: 1024px)");
   const sheetBeside = useMedia("(min-width: 768px)");
   const vh = useViewportHeight();
+  // Device-local date that rolls over on resume / at midnight; drives the kicker and today's weather.
+  const todayIso = useLocalToday();
 
   const [expanded, setExpanded] = useState(false);
   const router = useRouter();
@@ -157,10 +160,10 @@ export default function HomePage() {
   const settled = settledFishStatuses(fishRows);
   const headline = !hasLocation
     ? tripHeadline(null, [])
-    : settled === null && !reading
+    : (settled === null || loading) && !reading
       ? "Checking today’s conditions…"
-      : tripHeadline(reading, settled ?? []);
-  const kicker = `Today's trip · ${dayjs().format("ddd D MMM")}`.toUpperCase();
+      : tripHeadline(reading, settled ?? [], label);
+  const kicker = `Today's trip · ${dayjs(todayIso).format("ddd D MMM")}`.toUpperCase();
 
   const forageSpots = useMemo(
     () => (hasLocation ? [{ id: "pin", lon: lon!, lat: lat!, label: label || "Pin" }] : []),
@@ -182,7 +185,7 @@ export default function HomePage() {
     [isDesktop, sheetBeside, sheetSlug, vh, peekPx],
   );
 
-  const today = weather.find((d) => d.time === dayjs().format("YYYY-MM-DD"));
+  const today = weather.find((d) => d.time === todayIso);
   const elevText =
     elevationM == null
       ? null
@@ -208,7 +211,7 @@ export default function HomePage() {
             </span>
             {today && (
               <span className="kp-loc-wx">
-                {Math.round(today.tempMax)}° · {nextRain(weather)}
+                {Math.round(today.tempMax)}° · {nextRain(weather, todayIso)}
               </span>
             )}
           </button>
@@ -240,7 +243,7 @@ export default function HomePage() {
         <FieldMap
           center={center}
           base="satellite"
-          overlays={{ forest: false, blm: false }}
+          overlays={NO_OVERLAYS}
           forageSpots={forageSpots}
           waters={FISH_WATERS}
           spotlightLine={spotlight}
@@ -252,6 +255,12 @@ export default function HomePage() {
             if (!sp) return;
             setFocus([sp.lon, sp.lat]);
             setPinCard({ type: "saved", id });
+          }}
+          onLocate={(lo, la) => {
+            // GPS fix: the trip card (nearest waters, stamps, forecast) follows, like a picked location.
+            setFocus(null);
+            setPinCard(null);
+            setLocation(la, lo, `My location (${la.toFixed(2)}°N)`);
           }}
           onLongPress={(lo, la) => {
             setFocus(null);

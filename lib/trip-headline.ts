@@ -9,8 +9,10 @@ function fishClause(fish: ScopeStatus[]): string | null {
   return "Check fishing rules nearby";
 }
 
-/** The trip card headline, built from the forage reading's label and nearby waters' statuses. */
-export function tripHeadline(forage: { label: string } | null, fish: ScopeStatus[]): string {
+/** The trip card headline, built from the forage reading's label and nearby waters' statuses.
+ *  `place` is the current location's label when one is set: with no reading and no fishing data the
+ *  headline stays neutral ("Today at <place>") rather than asking for a location that already exists. */
+export function tripHeadline(forage: { label: string } | null, fish: ScopeStatus[], place?: string | null): string {
   const fishText = fishClause(fish);
   if (forage) {
     // Coupled to LABELS in lib/weather.ts: every band label is one word except
@@ -20,7 +22,8 @@ export function tripHeadline(forage: { label: string } | null, fish: ScopeStatus
     if (fish.includes("open")) return `Good to fish, ${L.toLowerCase()} to forage`;
     return `${L} for foraging · ${fishText}`;
   }
-  return fishText ?? "Set a location to plan today";
+  if (fishText) return fishText;
+  return place != null ? `Today at ${place.trim() || "this spot"}` : "Set a location to plan today";
 }
 
 /** A nearby-water row as the trip card holds it (see components/trip-card/fish-half.tsx). */

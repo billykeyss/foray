@@ -1,8 +1,18 @@
 import type { Map, GeoJSONSource } from "maplibre-gl";
 import type { WaterSummary } from "@/lib/fishing/types.ts";
+import { classifyBurn } from "@/lib/burn-window.ts";
 
 export const FOREST = "forest";
 export const BLM = "blm";
+/** LANDFIRE "Forest type" (existing vegetation) WMS overlay. */
+export const VEG = "vegetation";
+/** USGS National Hydrography ("Water") overlay. */
+export const HYDRO = "hydro";
+/** Wildfire perimeters (NIFC, public/data/burns.geojson), classified by morel window. */
+export const BURNS_SRC = "burns";
+export const BURNS_FILL = "burns-fill";
+export const BURNS_LINE = "burns-line";
+export const BURNS_URL = "/data/burns.geojson";
 export const WATERS_SRC = "waters";
 export const WATER_CLUSTERS = "water-clusters";
 export const WATER_COUNT = "water-cluster-count";
@@ -22,10 +32,37 @@ const FOREST_TILES =
 const BLM_TILES =
   "https://gis.blm.gov/arcgis/rest/services/lands/BLM_Natl_SMA_Cached_BLM_Only/MapServer/tile/{z}/{y}/{x}";
 
+// LANDFIRE Existing Vegetation Type (2023, CONUS): a public, CORS-enabled WMS (same service and
+// layer the Leaflet map used). The layer name is case-sensitive; the lowercase alias is a group.
+const VEG_TILES =
+  "https://edcintl.cr.usgs.gov/geoserver/landfire/wms?service=WMS&request=GetMap&version=1.3.0" +
+  "&layers=LF2023_EVT_CONUS&styles=&format=image/png&transparent=true&width=256&height=256" +
+  "&crs=EPSG:3857&bbox={bbox-epsg-3857}";
+const HYDRO_TILES =
+  "https://basemap.nationalmap.gov/arcgis/rest/services/USGSHydroCached/MapServer/tile/{z}/{y}/{x}";
+
 export interface Overlays {
+  /** National Forest land (USFS). */
   forest: boolean;
   blm: boolean;
+  /** Wildfire burn perimeters (morel intel). */
+  burns: boolean;
+  /** LANDFIRE forest / vegetation type. */
+  vegetation: boolean;
+  /** USGS hydrography: creeks, ponds, springs. */
+  hydro: boolean;
 }
+
+export const NO_OVERLAYS: Overlays = { forest: false, blm: false, burns: false, vegetation: false, hydro: false };
+
+/** Overlay layer ids by toggle (burns has two layers). */
+export const OVERLAY_LAYERS: Record<keyof Overlays, string[]> = {
+  forest: [FOREST],
+  blm: [BLM],
+  burns: [BURNS_FILL, BURNS_LINE],
+  vegetation: [VEG],
+  hydro: [HYDRO],
+};
 export interface ForageSpot {
   id: string;
   lon: number;
@@ -107,11 +144,31 @@ function addSquare(map: Map) {
 /** Adds every overlay/pin source+layer. Call on each style.load (a new style wipes them). */
 export function addFieldLayers(
   map: Map,
-  s: { overlays: Overlays; waters: WaterSummary[]; spots: ForageSpot[]; saved?: ForageSpot[]; line: [number, number][] | null },
+  s: {
+    overlays: Overlays;
+    waters: WaterSummary[];
+    spots: ForageSpot[];
+    saved?: ForageSpot[];
+    line: [number, number][] | null;
+    /** Burn perimeters, once loaded (they're fetched lazily on first toggle). */
+    burns?: BurnCollection | null;
+  },
 ) {
   addSquare(map);
   addDiamond(map);
   const vis = (on: boolean) => ({ visibility: on ? "visible" : "none" }) as const;
+  // Order, bottom to top: base < hillshade < forest type < NF < BLM < burns < water < pins.
+  if (!map.getSource(VEG)) {
+    map.addSource(VEG, {
+      type: "raster",
+      tiles: [VEG_TILES],
+      tileSize: 256,
+      minzoom: 4,
+      maxzoom: 15,
+      attribution: "Vegetation: LANDFIRE 2023 EVT · USGS",
+    });
+    map.addLayer({ id: VEG, type: "raster", source: VEG, layout: vis(s.overlays.vegetation), paint: { "raster-opacity": 0.5 } });
+  }
   if (!map.getSource(FOREST)) {
     map.addSource(FOREST, {
       type: "raster",
@@ -144,6 +201,17 @@ export function addFieldLayers(
       layout: vis(s.overlays.blm),
       paint: { "raster-opacity": 0.55 },
     });
+  }
+  if (s.burns) addBurns(map, s.burns, s.overlays.burns);
+  if (!map.getSource(HYDRO)) {
+    map.addSource(HYDRO, {
+      type: "raster",
+      tiles: [HYDRO_TILES],
+      tileSize: 256,
+      maxzoom: 16,
+      attribution: "Water: USGS National Hydrography",
+    });
+    map.addLayer({ id: HYDRO, type: "raster", source: HYDRO, layout: vis(s.overlays.hydro) });
   }
   if (!map.getSource(LINE_SRC)) {
     map.addSource(LINE_SRC, { type: "geojson", data: empty as never });
@@ -227,5 +295,34 @@ export function setLine(map: Map, line: [number, number][] | null) {
     line && line.length > 1
       ? { type: "Feature", properties: {}, geometry: { type: "LineString", coordinates: line } }
       : (empty as never),
+  );
+}
+
+export type BurnCollection = GeoJSON.FeatureCollection<GeoJSON.Geometry, Record<string, unknown>>;
+
+/** Bake each perimeter's morel-window colour/opacity into its properties (current-year relative). */
+export function classifyBurns(fc: BurnCollection, now: Date = new Date()): BurnCollection {
+  return {
+    ...fc,
+    features: fc.features.map((f) => {
+      const c = classifyBurn(Number(f.properties?.year), now);
+      return { ...f, properties: { ...f.properties, _color: c.color, _opacity: c.fillOpacity } };
+    }),
+  };
+}
+
+/** Add the burn perimeters below the water overlay and pins. Idempotent; call again after style.load. */
+export function addBurns(map: Map, data: BurnCollection, visible: boolean) {
+  if (map.getSource(BURNS_SRC)) return;
+  const before = [HYDRO, LINE_LAYER].find((id) => map.getLayer(id));
+  const layout = { visibility: visible ? "visible" : "none" } as const;
+  map.addSource(BURNS_SRC, { type: "geojson", data, attribution: "Fire perimeters: NIFC" });
+  map.addLayer(
+    { id: BURNS_FILL, type: "fill", source: BURNS_SRC, layout, paint: { "fill-color": ["get", "_color"], "fill-opacity": ["get", "_opacity"] } },
+    before,
+  );
+  map.addLayer(
+    { id: BURNS_LINE, type: "line", source: BURNS_SRC, layout, paint: { "line-color": ["get", "_color"], "line-width": 1 } },
+    before,
   );
 }

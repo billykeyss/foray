@@ -3,9 +3,10 @@
 import { useEffect, useState } from "react";
 import { loadWater, WaterNotCachedError } from "@/lib/fishing/load.ts";
 import { resolveDataset } from "@/lib/fishing/resolve.ts";
-import { localIsoDate } from "@/lib/fishing/local-date.ts";
+import { useLocalToday } from "@/lib/use-local-today.ts";
 import { nearestWaters } from "@/lib/fishing/nearby.ts";
 import { StatusStamp } from "@/components/fishing/status-stamp";
+import { WarnIcon } from "@/components/fishing/icons";
 import type { FishRowState } from "@/lib/trip-headline.ts";
 import { sunTimes } from "@/lib/daylight.ts";
 import { fishingHoursWindow, fmtClock, pickHoursRule } from "@/lib/fishing-hours.ts";
@@ -54,12 +55,18 @@ export interface FishRow extends FishRowState {
   states: string[];
   /** Today's legal hours, when a `fishing_hours` rule is in force. */
   hours?: RowHours | null;
+  /** The managing agency asks anglers to verify current conditions before fishing this water. */
+  verifyCurrent: boolean;
 }
 
-/** The 3 nearest waters (default 50 mi radius), each resolved for the device's local date.
+export const VERIFY_ADVISORY = "Verify current conditions with the managing agency";
+
+/** The 3 nearest waters (default 50 mi radius), each resolved for the device's local date
+ *  (re-resolved when the date rolls over, e.g. the PWA is resumed the next morning).
  *  A row that can't load degrades on its own; it never fails the whole list. */
 export function useNearbyFish(lat: number | null, lon: number | null): FishRow[] | null {
   const [rows, setRows] = useState<FishRow[] | null>(null);
+  const today = useLocalToday();
   useEffect(() => {
     if (lat == null || lon == null) {
       setRows(null);
@@ -67,9 +74,8 @@ export function useNearbyFish(lat: number | null, lon: number | null): FishRow[]
     }
     let cancelled = false;
     const near = nearestWaters(lat, lon, 3);
-    const base = near.map((w) => ({ slug: w.slug, name: w.name, waterType: w.waterType, distanceMi: w.distanceMi, states: w.states, lat: w.lat, lon: w.lon }));
+    const base = near.map((w) => ({ slug: w.slug, name: w.name, waterType: w.waterType, distanceMi: w.distanceMi, states: w.states, lat: w.lat, lon: w.lon, verifyCurrent: w.verifyCurrent }));
     setRows(base.map((w) => ({ ...w, state: { kind: "loading" } })));
-    const today = localIsoDate();
     Promise.all(
       base.map(async (w): Promise<FishRow> => {
         try {
@@ -77,7 +83,16 @@ export function useNearbyFish(lat: number | null, lon: number | null): FishRow[]
           const res = resolveDataset(ds, today);
           const pick = pickHoursRule(res.scopes);
           const hours = pick ? hoursFor(pick, res.dataAsOf, w.lat, w.lon, new Date()) : null;
-          return { slug: w.slug, name: w.name, waterType: w.waterType, distanceMi: w.distanceMi, states: w.states, hours, state: { kind: "ready", status: res.status.overall } };
+          return {
+            slug: w.slug,
+            name: w.name,
+            waterType: w.waterType,
+            distanceMi: w.distanceMi,
+            states: w.states,
+            hours,
+            verifyCurrent: res.status.verifyCurrent || w.verifyCurrent,
+            state: { kind: "ready", status: res.status.overall },
+          };
         } catch (err) {
           return { ...w, state: err instanceof WaterNotCachedError ? { kind: "not-cached" } : { kind: "error" } };
         }
@@ -88,7 +103,7 @@ export function useNearbyFish(lat: number | null, lon: number | null): FishRow[]
     return () => {
       cancelled = true;
     };
-  }, [lat, lon]);
+  }, [lat, lon, today]);
   return rows;
 }
 
@@ -123,14 +138,15 @@ export default function FishHalf({
   onWaterTap: (slug: string) => void;
 }) {
   const { licenses } = useLicense();
+  const today = useLocalToday();
   const [sun, setSun] = useState<string | null>(null);
   useEffect(() => {
     if (lat == null || lon == null) return setSun(null);
     const t = sunTimes(lat, lon, new Date());
     setSun(Number.isNaN(t.sunrise.getTime()) ? null : `↑ ${fmtClock(t.sunrise)} · ↓ ${fmtClock(t.sunset)}`);
-  }, [lat, lon]);
+  }, [lat, lon, today]);
   const nearest = rows?.[0];
-  const warning = nearest ? licenseWarning(licenses, nearest.states, localIsoDate()) : null;
+  const warning = nearest ? licenseWarning(licenses, nearest.states, today) : null;
   return (
     <div className="kp-trip-half kp-trip-half--fish">
       <div className="kp-trip-half-head">
@@ -163,6 +179,12 @@ export default function FishHalf({
                     <StatusStamp status="unknown" size="sm" short />
                   )}
                 </span>
+                {r.verifyCurrent && (
+                  <span className="kp-trip-verify" aria-label={`${VERIFY_ADVISORY}.`} title={`${VERIFY_ADVISORY}.`}>
+                    <WarnIcon size={11} />
+                    <span aria-hidden>Verify</span>
+                  </span>
+                )}
                 {r.hours && <HoursLine h={r.hours} />}
                 {r.state.kind === "not-cached" && <span className="kp-trip-water-note">Not downloaded</span>}
                 {r.state.kind === "error" && <span className="kp-trip-water-note">Couldn’t load rules</span>}

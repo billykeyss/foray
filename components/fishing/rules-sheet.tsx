@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { loadWater, WaterNotCachedError, WaterNotFoundError } from "@/lib/fishing/load.ts";
 import { resolveDataset, type WaterRules } from "@/lib/fishing/resolve.ts";
-import { localIsoDate } from "@/lib/fishing/local-date.ts";
+import { useLocalToday } from "@/lib/use-local-today.ts";
 import { StatusStamp } from "./status-stamp";
 import { RuleCard, SpeciesLimitCard } from "./rule-card";
 import { groupBagAndSize } from "./rule-format.ts";
@@ -19,16 +19,19 @@ export type WaterState =
   | { kind: "not-found" }
   | { kind: "error"; message: string };
 
-/** Load + resolve a water for `on` (default: the device's local today). `reload` retries. */
+/** Load + resolve a water for `on` (default: the device's local today, re-resolved when the date
+ *  rolls over while the sheet is open or the app is resumed). `reload` retries. */
 export function useWaterRules(slug: string, on?: string) {
   const [state, setState] = useState<WaterState>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const today = useLocalToday();
+  const date = on ?? today;
   useEffect(() => {
     let cancelled = false;
     setState({ kind: "loading" });
     loadWater(slug)
       .then((ds) => {
-        if (!cancelled) setState({ kind: "ready", data: resolveDataset(ds, on ?? localIsoDate()) });
+        if (!cancelled) setState({ kind: "ready", data: resolveDataset(ds, date) });
       })
       .catch((err) => {
         if (cancelled) return;
@@ -39,7 +42,7 @@ export function useWaterRules(slug: string, on?: string) {
     return () => {
       cancelled = true;
     };
-  }, [slug, on, attempt]);
+  }, [slug, date, attempt]);
   const reload = useCallback(() => setAttempt((n) => n + 1), []);
   return { state, reload };
 }

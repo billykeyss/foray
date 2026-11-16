@@ -31,7 +31,7 @@ function apply(map: Map, exaggeration: number) {
         paint: { "hillshade-exaggeration": 0.35 },
       },
       // Below overlays/pins when they exist, directly above the base otherwise.
-      map.getLayer("forest") ? "forest" : undefined,
+      ["vegetation", "forest"].find((id) => map.getLayer(id)),
     );
   }
 }

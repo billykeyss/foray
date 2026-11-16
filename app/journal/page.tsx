@@ -6,8 +6,9 @@ import { entryKind, useJournal, type JournalWeatherSnapshot } from "@/lib/journa
 import JournalCatchFields, { type CatchForm } from "@/components/journal-catch-fields";
 import { useSavedSpots } from "@/lib/saved-spots.ts";
 import { localIsoDate } from "@/lib/fishing/local-date.ts";
+import { useLocalToday } from "@/lib/use-local-today.ts";
 import { FISH_WATERS } from "@/lib/fishing/waters-index.ts";
-import Link from "next/link";
+import DocLink from "@/components/doc-link";
 import { useLocation } from "@/lib/location-context";
 import { computeSporeScore } from "@/lib/weather";
 import { compressPhoto, dataUrlSize } from "@/lib/photo";
@@ -54,6 +55,8 @@ export default function JournalPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const { spots: savedSpots, remove: removeSpot } = useSavedSpots();
   const [formKind, setFormKind] = useState<"find" | "catch">("find");
+  // The catch check's "today" follows the local date even if the form stays open past midnight.
+  const today = useLocalToday();
   const EMPTY_CATCH: CatchForm = { waterSlug: "", species: "", length: "", kept: false, reachId: "" };
   const [catchForm, setCatchForm] = useState<CatchForm>(EMPTY_CATCH);
 
@@ -465,12 +468,12 @@ export default function JournalPage() {
           )}
           {savedSpots.map((sp) => (
             <div key={sp.id} className="kp-spot-row">
-              <Link href={`/?lat=${sp.lat}&lon=${sp.lon}`}>
+              <DocLink href={`/?lat=${sp.lat}&lon=${sp.lon}`}>
                 {sp.label}
                 <small>
                   {sp.kind === "both" ? "forage + fish" : sp.kind} · {formatLatLon(sp.lat, sp.lon, 3)}
                 </small>
-              </Link>
+              </DocLink>
               <button type="button" onClick={() => removeSpot(sp.id)} aria-label={`Remove ${sp.label}`}>
                 Remove
               </button>
@@ -585,7 +588,7 @@ export default function JournalPage() {
               <JournalCatchFields
                 value={catchForm}
                 onChange={(patch) => setCatchForm((c) => ({ ...c, ...patch }))}
-                date={mode === "edit" && editingEntry ? editingEntry.date : localIsoDate()}
+                date={mode === "edit" && editingEntry ? editingEntry.date : today}
                 near={lat != null && lon != null ? { lat, lon } : null}
               />
             ) : (

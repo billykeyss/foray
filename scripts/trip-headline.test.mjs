@@ -42,3 +42,12 @@ test("settledFishStatuses: holds back while loading, unloadable rows count as un
   assert.equal(tripHeadline({ label: "Fair" }, partial), "Fair for foraging · Check fishing rules nearby");
   assert.deepEqual(settledFishStatuses([{ state: { kind: "error" } }, ready("catch_and_release")]), ["unknown", "catch_and_release"]);
 });
+
+test("location set but no reading and no waters: neutral headline, never 'Set a location'", () => {
+  assert.equal(tripHeadline(null, [], "Tahoe Meadows"), "Today at Tahoe Meadows");
+  assert.equal(tripHeadline(null, [], ""), "Today at this spot");
+  assert.equal(tripHeadline(null, [], null), "Set a location to plan today");
+  // The place never displaces a real clause.
+  assert.equal(tripHeadline({ label: "Fair" }, [], "X"), "Fair for foraging");
+  assert.equal(tripHeadline(null, ["open"], "X"), "Good to fish");
+});
