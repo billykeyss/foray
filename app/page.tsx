@@ -276,6 +276,8 @@ export default function HomePage() {
         fish={
           <FishHalf
             rows={fishRows}
+            lat={lat}
+            lon={lon}
             hasLocation={hasLocation}
             onSetLocation={() => setChooserOpen(true)}
             onWaterTap={openWater}

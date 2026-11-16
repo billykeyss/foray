@@ -1257,6 +1257,7 @@
 }
 .kp .kp-trip-half-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   font: 500 11px var(--kp-font-mono);
@@ -1323,6 +1324,9 @@
 .kp .kp-trip-water-type { text-transform: lowercase; }
 .kp .kp-trip-water .status-stamp { flex: none; }
 .kp .kp-trip-water-note { font-size: 11px; font-weight: 600; color: var(--kp-unknown); }
+.kp .kp-trip-sun { flex-basis: 100%; white-space: nowrap; font: 500 10.5px var(--kp-font-mono); letter-spacing: 0; text-transform: none; color: var(--kp-ink-64); }
+.kp .kp-trip-license { margin: 0; padding: 6px 8px; border-radius: var(--kp-radius-tag); background: var(--kp-warn-bg); color: var(--kp-brass-ink); font: 500 12px/1.3 var(--kp-font-mono); }
+.kp .kp-trip-water-hours { font: 500 10.5px/1.3 var(--kp-font-mono); color: var(--kp-ink-64); }
 .kp .kp-trip-pending { font: 500 12px var(--kp-font-mono); color: var(--kp-ink-48); }
 .kp .kp-trip-cta {
   display: flex;
@@ -1484,3 +1488,11 @@
 .kp .kp-spot-row button { min-height: 36px; padding: 0 12px; border-radius: 999px; border: var(--kp-hairline); background: var(--kp-bone-2); font: inherit; font-size: 13px; cursor: pointer; color: var(--kp-ink); }
 .kp.kp-catch-tag { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 6px; background: var(--kp-warden); color: var(--kp-bone); font-family: var(--kp-font-mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; vertical-align: middle; font-style: normal; }
 .kp.kp-catch .kp-catch-select { width: 100%; min-height: 44px; padding: 0 10px; border: var(--kp-hairline); border-radius: 10px; background: var(--kp-bone-2); font: inherit; font-size: 16px; color: var(--kp-ink); }
+
+.kp.kp-license { margin: 20px 0 0; padding: 12px; border: var(--kp-hairline); border-radius: var(--kp-radius-card); background: var(--kp-bone-2); color: var(--kp-ink); }
+.kp.kp-license legend { padding: 0 6px; font: 500 11px var(--kp-font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--kp-river); }
+.kp.kp-license p { margin: 0 0 8px; font-size: 12px; line-height: 1.4; color: var(--kp-ink-64); }
+.kp .kp-license-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+.kp .kp-license-row label { width: 84px; font: 500 12px var(--kp-font-mono); }
+.kp .kp-license-row input { flex: 1; min-width: 0; height: 38px; padding: 0 8px; border: var(--kp-hairline); border-radius: var(--kp-radius-tag); background: #fff; font: 14px var(--kp-font-body); color: var(--kp-ink); }
+.kp .kp-license-row button { height: 38px; padding: 0 10px; border: var(--kp-hairline); border-radius: var(--kp-radius-tag); background: none; font: 500 12px var(--kp-font-body); color: var(--kp-ink-64); cursor: pointer; }

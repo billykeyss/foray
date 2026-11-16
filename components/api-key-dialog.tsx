@@ -4,6 +4,8 @@ import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useApiKey } from "@/lib/api-key-context";
 import OfflineDownload from "@/components/offline-download";
+import { useLicense } from "@/lib/use-license.ts";
+import type { LicenseState } from "@/lib/license.ts";
 import { FISHING_DATA } from "@/lib/fishing/meta.ts";
 
 const FISHING_DATE = new Date(FISHING_DATA.exportedAt).toLocaleDateString(
@@ -20,6 +22,7 @@ export default function ApiKeyDialog({ open, onClose }: Props) {
   const { apiKey, setApiKey } = useApiKey();
   const [input, setInput] = useState(apiKey ?? "");
   const [show, setShow] = useState(false);
+  const { licenses, setExpiry } = useLicense();
 
   if (!open) return null;
 
@@ -167,6 +170,30 @@ export default function ApiKeyDialog({ open, onClose }: Props) {
         </div>
 
         <OfflineDownload />
+
+        <fieldset className="kp kp-license">
+          <legend>Fishing license</legend>
+          <p>Optional. Stored on this device only; used to remind you before a license lapses.</p>
+          {(["CA", "NV"] as LicenseState[]).map((st) => {
+            const cur = licenses.find((l) => l.state === st)?.expires ?? "";
+            return (
+              <div className="kp-license-row" key={st}>
+                <label htmlFor={`lic-${st}`}>{st} expires</label>
+                <input
+                  id={`lic-${st}`}
+                  type="date"
+                  value={cur}
+                  onChange={(e) => setExpiry(st, e.target.value || null)}
+                />
+                {cur && (
+                  <button type="button" onClick={() => setExpiry(st, null)} aria-label={`Remove ${st} license`}>
+                    Remove
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </fieldset>
 
         <p
           className="font-mono mt-4"
