@@ -38,8 +38,9 @@ export default function TabBar() {
             <li key={t.href} className="flex justify-center">
               <Link
                 href={t.href}
+                aria-current={active ? "page" : undefined}
                 className="flex flex-col items-center gap-1.5 py-1 px-2"
-                style={{ color: active ? "var(--kp-ink)" : "rgba(26, 43, 34, 0.55)" }}
+                style={{ color: active ? "var(--kp-ink)" : "rgba(26, 43, 34, 0.72)" }}
               >
                 <Icon active={active} />
                 <span
@@ -48,7 +49,6 @@ export default function TabBar() {
                     fontSize: 9,
                     letterSpacing: "0.18em",
                     textTransform: "uppercase",
-                    opacity: active ? 1 : 0.8,
                     fontWeight: active ? 600 : 400,
                   }}
                 >

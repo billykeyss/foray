@@ -87,6 +87,7 @@ export default function SideNav() {
             <Link
               key={t.href}
               href={t.href}
+                aria-current={active ? "page" : undefined}
               className="flex items-center justify-between group"
               style={{
                 padding: "12px 14px",

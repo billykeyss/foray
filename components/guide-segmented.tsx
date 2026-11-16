@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * Segmented control rendered at the top of the Guide pages (`/catalog`
@@ -26,15 +27,46 @@ export default function GuideSegmented({
   const isOcean = pathname.startsWith("/ocean");
   const isFish = pathname.startsWith("/fish");
 
+  const ref = useRef<HTMLDivElement>(null);
+  const [fade, setFade] = useState({ left: false, right: false });
+  const updateFade = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    setFade({
+      left: el.scrollLeft > 4,
+      right: el.scrollLeft + el.clientWidth < el.scrollWidth - 4,
+    });
+  }, []);
+  // Keep the active segment visible when the strip overflows (phone width).
+  useEffect(() => {
+    const el = ref.current;
+    el?.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({
+      inline: "center",
+      block: "nearest",
+    });
+    updateFade();
+  }, [pathname, updateFade]);
+  useEffect(() => {
+    window.addEventListener("resize", updateFade);
+    return () => window.removeEventListener("resize", updateFade);
+  }, [updateFade]);
+  const edge = (on: boolean) => (on ? "transparent" : "#000");
+  const mask = `linear-gradient(to right, ${edge(fade.left)} 0, #000 28px, #000 calc(100% - 28px), ${edge(fade.right)} 100%)`;
+
   return (
     <div
-      className="font-mono mb-5"
+      ref={ref}
+      onScroll={updateFade}
+      className="font-mono mb-5 [&::-webkit-scrollbar]:hidden"
       role="tablist"
       aria-label="Guide section"
       style={{
         display: "inline-flex",
         maxWidth: "100%",
         overflowX: "auto",
+        scrollbarWidth: "none",
+        WebkitMaskImage: mask,
+        maskImage: mask,
         padding: 4,
         border: "1px solid var(--line)",
         borderRadius: 999,
