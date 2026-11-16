@@ -11,7 +11,7 @@ export function buildStyle(base: BaseId): StyleSpecification {
   const satellite = base === "satellite";
   return {
     version: 8,
-    glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+    glyphs: "/fonts/glyphs/{fontstack}/{range}.pbf",
     sources: {
       base: {
         type: "raster",

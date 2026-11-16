@@ -50,3 +50,9 @@ test("out/sw.js precaches fishing data", (t) => {
   assert.ok(sw.includes("/fishing/w/donner-lake.json"));
   assert.ok(sw.includes("/fishing/stocking-recent.json"));
 });
+
+test("out/sw.js precaches self-hosted map glyphs", (t) => {
+  if (!existsSync(swPath)) return t.skip("out/sw.js not built (run npm run build)");
+  const sw = readFileSync(swPath, "utf8");
+  assert.ok(sw.includes("/fonts/glyphs/Open%20Sans%20Semibold/0-255.pbf"));
+});

@@ -15,6 +15,7 @@ const INCLUDE = [
   /^icons\/.+\.png$/i,
   /^foray-icon\.png$/i, // in-app logo
   /^manifest\.webmanifest$/i,
+  /^fonts\/glyphs\/.+\.pbf$/i, // MapLibre cluster-count glyphs (public/fonts/glyphs)
   /^fishing\/.+\.json$/i, // offline fishing rules + recent stocking (public/fishing)
 ];
 const EXCLUDE = [/^sw\.js$/i, /\.map$/i, /^img\//i];

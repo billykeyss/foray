@@ -59,11 +59,12 @@ export default function FieldMap(props: FieldMapProps) {
       center: latest.current.center,
       zoom: 9,
       maxPitch: 70,
-      attributionControl: { compact: true },
+      attributionControl: false,
     });
     mapRef.current = map;
     if (process.env.NODE_ENV !== "production") (window as unknown as { __fieldMap?: MLMap }).__fieldMap = map;
-    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true }), "bottom-right");
+    map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-left");
+    map.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true }), "top-left");
     const offTerrain = keepTerrain(map, { exaggeration: 1.3 });
     const onStyle = () => {
       const p = latest.current;
@@ -128,7 +129,7 @@ export default function FieldMap(props: FieldMapProps) {
     baseRef.current = base;
     if (appliedBase.current === base) return;
     appliedBase.current = base;
-    mapRef.current?.setStyle(buildStyle(base));
+    mapRef.current?.setStyle(buildStyle(base), { diff: false });
   }, [base]);
 
   useEffect(() => {
@@ -171,6 +172,14 @@ export default function FieldMap(props: FieldMapProps) {
 
   return (
     <div className="absolute inset-0" data-testid="field-map">
+      <style>{`
+        .maplibregl-ctrl-top-left{top:calc(116px + env(safe-area-inset-top))}
+        .maplibregl-ctrl-bottom-left{bottom:calc(270px + env(safe-area-inset-bottom))}
+        @media (min-width:1024px){
+          .maplibregl-ctrl-top-left{top:12px}
+          .maplibregl-ctrl-bottom-left{bottom:0}
+        }
+      `}</style>
       <div ref={el} style={{ position: "absolute", inset: 0 }} />
       <MapControls
         base={base}
