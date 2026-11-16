@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useLocation } from "@/lib/location-context";
 import { computeSporeScore } from "@/lib/weather";
+import { FISH_WATERS } from "@/lib/fishing/waters-index.ts";
 
-const ForageMap = dynamic(() => import("@/components/forage-map"), {
+const FieldMap = dynamic(() => import("@/components/field-map/field-map.tsx"), {
   ssr: false,
   loading: () => (
     <div
@@ -37,6 +38,13 @@ export default function MapPage() {
     [weather]
   );
   const [input, setInput] = useState("");
+  const forageSpots = useMemo(
+    () =>
+      lat != null && lon != null
+        ? [{ id: "pin", lon, lat, label: label || "Pin" }]
+        : [],
+    [lat, lon, label]
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,10 +57,16 @@ export default function MapPage() {
 
   return (
     <main className="absolute inset-0 z-0">
-      <ForageMap
-        lat={lat}
-        lon={lon}
-        onSelect={(la, lo) =>
+      <FieldMap
+        center={[lon ?? -122.5965, lat ?? 37.9235]}
+        base="satellite"
+        overlays={{ forest: false, blm: false }}
+        forageSpots={forageSpots}
+        waters={FISH_WATERS}
+        spotlightLine={null}
+        onWaterTap={() => {}}
+        onSpotTap={() => {}}
+        onLongPress={(lo, la) =>
           setLocation(la, lo, `Pin ${la.toFixed(2)}, ${lo.toFixed(2)}`)
         }
       />
@@ -136,7 +150,7 @@ export default function MapPage() {
               textTransform: "uppercase",
             }}
           >
-            Tap map to drop a pin
+            Press and hold to drop a pin
           </span>
         </div>
       </div>

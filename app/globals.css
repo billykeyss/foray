@@ -1,4 +1,3 @@
-@import "leaflet/dist/leaflet.css";
 
 @tailwind base;
 @tailwind components;
@@ -217,23 +216,6 @@ body::before {
 /* Map page bottom sheet: hugs above the mobile tab bar; floats top-right on desktop */
 .map-sheet { bottom: calc(86px + env(safe-area-inset-bottom)); }
 @media (min-width: 1024px) { .map-sheet { bottom: 24px; } }
-
-/* Leaflet overrides — vintage map look */
-.leaflet-container {
-  background: var(--parchment-deep) !important;
-  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace) !important;
-}
-.leaflet-control-attribution {
-  background: rgba(240, 228, 200, 0.75) !important;
-  color: var(--ink-soft) !important;
-  font-family: var(--font-mono, "IBM Plex Mono", ui-monospace, monospace) !important;
-  font-size: 9px !important;
-}
-.leaflet-control-zoom a {
-  background: rgba(240, 228, 200, 0.95) !important;
-  color: var(--moss) !important;
-  border-color: var(--line) !important;
-}
 
 /* ════════ Editorial chrome (2xl: atlas spread) ════════ */
 
