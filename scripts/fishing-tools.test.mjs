@@ -2,6 +2,9 @@ process.env.TZ = "America/Los_Angeles";
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { FISH_WATERS } from "../lib/fishing/waters-index.ts";
+import { resolveDataset } from "../lib/fishing/resolve.ts";
+import { TOOL_RESULT_CAP } from "../lib/chat/tools.ts";
 import { searchWaters } from "../lib/fishing/search.ts";
 import { TOOL_SCHEMAS, executeTool } from "../lib/chat/tools.ts";
 import { buildSystemPrompt } from "../lib/chat/prompt.ts";
@@ -78,4 +81,55 @@ test("system prompt mentions fishing tools and not legal advice", () => {
   const { staticText } = buildSystemPrompt({ todayISO: "2026-07-01", regionLabel: "x", locationLabel: "x", lat: null, lon: null });
   assert.match(staticText, /get_water_rules/);
   assert.match(staticText, /not legal advice/i);
+  assert.match(staticText, /without its citation and source link/);
+  assert.match(staticText, /truncated/);
+});
+
+test("get_water_rules: every water returns valid, capped JSON with every scope accounted for", async () => {
+  let max = 0;
+  let truncatedCount = 0;
+  for (const w of FISH_WATERS) {
+    const ds = await loadWater(w.slug);
+    const r = resolveDataset(ds, "2026-07-01");
+    const out = await executeTool("get_water_rules", { slug: w.slug, date: "2026-07-01" }, ctx, () => {});
+    max = Math.max(max, out.length);
+    assert.ok(out.length <= TOOL_RESULT_CAP, `${w.slug} ${out.length}`);
+    const j = JSON.parse(out);
+    assert.equal(j.status.overall, r.status.overall, w.slug);
+    const present = new Map(j.scopes.map((s) => [s.scope, s]));
+    let elided = (j.licensesOmitted ?? 0) > 0 || (j.scopesOmitted ?? 0) > 0;
+    for (const s of r.scopes) {
+      const got = present.get(s.scope);
+      if (!got) {
+        assert.ok(j.omittedScopes.some((o) => o.scope === s.scope && o.status === s.status), `${w.slug} ${s.scope} missing`);
+        continue;
+      }
+      assert.equal(got.status, s.status, w.slug);
+      assert.ok(got.statusLabel, w.slug);
+      if (got.rules.length < s.rules.length) {
+        elided = true;
+        assert.equal(got.rulesOmitted, s.rules.length - got.rules.length, w.slug);
+      }
+    }
+    if (elided) {
+      truncatedCount++;
+      assert.equal(j.truncated, true, w.slug);
+      assert.match(j.note, /partial/i);
+    } else assert.ok(!j.truncated, w.slug);
+  }
+  console.log(`max result ${max} chars; ${truncatedCount} waters truncated`);
+});
+
+test("get_water_rules: scope argument returns that scope's full rules with citations", async () => {
+  const ds = await loadWater("eel-river");
+  const r = resolveDataset(ds, "2026-07-01");
+  const target = r.scopes.reduce((a, b) => (b.rules.length > a.rules.length ? b : a));
+  const j = JSON.parse(await executeTool("get_water_rules", { slug: "eel-river", date: "2026-07-01", scope: target.scope }, ctx, () => {}));
+  const got = j.scopes.find((s) => s.scope === target.scope);
+  assert.ok(got.rules.length > 0);
+  assert.ok(got.rules.length <= target.rules.length);
+  assert.ok(!("rulesOmitted" in got) || got.rules.length + got.rulesOmitted === target.rules.length);
+  assert.ok(got.rules.every((x) => "citation" in x && "sourceUrl" in x && "confidence" in x));
+  const bad = await executeTool("get_water_rules", { slug: "eel-river", scope: "nope" }, ctx, () => {});
+  assert.match(bad, /no scope named/);
 });

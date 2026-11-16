@@ -20,7 +20,7 @@ import type { JournalEntry } from "../journal.ts";
 import { searchWaters } from "../fishing/search.ts";
 import { nearestWaters } from "../fishing/nearby.ts";
 import { loadWater as defaultLoadWater } from "../fishing/load.ts";
-import { resolveDataset } from "../fishing/resolve.ts";
+import { resolveDataset, STATUS_LABEL } from "../fishing/resolve.ts";
 import { isValidIsoDate } from "../fishing/engine/index.ts";
 import { localIsoDate } from "../fishing/local-date.ts";
 import type { WaterDataset } from "../fishing/types.ts";
@@ -142,12 +142,17 @@ export const TOOL_SCHEMAS = [
   {
     name: "get_water_rules",
     description:
-      "Today's fishing status and rules for one water (slug from find_waters): open / catch & release / closed, with each rule's citation, source link, confidence and the data's as-of date. A convenience summary, not legal advice.",
+      "Today's fishing status and rules for one water (slug from find_waters): open / catch & release / closed, with each rule's citation, source link, confidence and the data's as-of date. A convenience summary, not legal advice. If the result is marked truncated, call again with `scope`.",
     input_schema: {
       type: "object" as const,
       properties: {
         slug: { type: "string", description: "Exact water slug from find_waters, e.g. 'donner-lake'" },
         date: { type: "string", description: "YYYY-MM-DD; defaults to today (device local date)" },
+        scope: {
+          type: "string",
+          description:
+            "Exact scope name from a previous (truncated) result; returns that scope's full rules with citations",
+        },
       },
       required: ["slug"],
     },
@@ -437,7 +442,7 @@ function findWatersTool(input: { query?: string; near?: boolean; limit?: number 
   return capJson(searchWaters(q, limit).map((w) => ({ slug: w.slug, name: w.name, waterType: w.waterType, states: w.states })));
 }
 
-async function getWaterRulesTool(input: { slug?: string; date?: string }, ctx: ToolContext): Promise<string> {
+async function getWaterRulesTool(input: { slug?: string; date?: string; scope?: string }, ctx: ToolContext): Promise<string> {
   const slug = String(input.slug ?? "");
   const on = input.date ?? localIsoDate();
   if (!isValidIsoDate(on)) return `Error: invalid date "${on}" — use a real calendar date as YYYY-MM-DD.`;
@@ -458,27 +463,69 @@ async function getWaterRulesTool(input: { slug?: string; date?: string }, ctx: T
     species: x.species,
     ...(x.periods ? { periods: x.periods } : {}),
   });
-  const full = {
+  const focus = input.scope == null ? -1 : r.scopes.findIndex((s) => s.scope === input.scope);
+  if (input.scope != null && focus < 0) {
+    return `Error: water "${slug}" has no scope named "${input.scope}". Scopes: ${r.scopes.map((s) => JSON.stringify(s.scope)).join(", ")}.`;
+  }
+  const licenses = r.licenses.map((l) => ({ authority: l.authority, ...rule(l) }));
+  const head = {
     water: { slug: r.water.slug, name: r.water.name, waterType: r.water.waterType, states: r.water.states },
     status: r.status,
     asOf: r.asOf,
     dataAsOf: r.dataAsOf,
-    scopes: r.scopes.map((s) => ({ scope: s.scope, status: s.status, sublabel: s.sublabel, rules: s.rules.map(rule) })),
-    licenses: r.licenses.map((l) => ({ authority: l.authority, ...rule(l) })),
-    disclaimer: FISHING_DISCLAIMER,
   };
-  // Shed per-rule detail from the tail, never the scope statuses or citations, until the JSON fits.
-  let out = JSON.stringify(full);
-  if (out.length > TOOL_RESULT_CAP) {
-    const lean = { ...full, licenses: full.licenses.slice(0, 3) };
-    out = JSON.stringify(lean);
-    for (let i = lean.scopes.length - 1; i >= 0 && out.length > TOOL_RESULT_CAP; i--) {
-      lean.scopes = lean.scopes.map((s, j) => (j >= i && j > 0 ? { ...s, rules: s.rules.slice(0, 2) } : s));
-      out = JSON.stringify(lean);
+
+  // Build a result with full rules for scopes in `full`, licenses in or out, and only the first `m` scopes.
+  // Nothing is ever dropped silently: elided rules carry rulesOmitted, and any elision sets truncated + note.
+  const build = (full: (i: number) => boolean, withLicenses: boolean, m: number) => {
+    let truncated = false;
+    const scopes = r.scopes.slice(0, m).map((s, i) => {
+      const base = { scope: s.scope, status: s.status, statusLabel: STATUS_LABEL[s.status], sublabel: s.sublabel };
+      if (full(i)) return { ...base, rules: s.rules.map(rule) };
+      if (s.rules.length > 0) truncated = true;
+      return { ...base, rules: [] as ReturnType<typeof rule>[], rulesOmitted: s.rules.length };
+    });
+    const out: Record<string, unknown> = { ...head, scopes };
+    if (m < r.scopes.length) {
+      truncated = true;
+      out.scopesOmitted = r.scopes.length - m;
+      out.omittedScopes = r.scopes.slice(m).map((s) => ({ scope: s.scope, status: s.status }));
     }
-    if (out.length > TOOL_RESULT_CAP) out = capJson(lean);
+    if (withLicenses) out.licenses = licenses;
+    else if (licenses.length > 0) {
+      truncated = true;
+      out.licensesOmitted = licenses.length;
+    }
+    if (truncated) {
+      out.truncated = true;
+      out.note =
+        "PARTIAL RESULT: some rules were left out to fit. Tell the user the answer is partial, and call get_water_rules again with the exact scope name in `scope` to get that scope's full rules and citations (licenses appear when the full result fits).";
+    }
+    out.disclaimer = FISHING_DISCLAIMER;
+    return JSON.stringify(out);
+  };
+  const fits = (j: string) => j.length <= TOOL_RESULT_CAP;
+
+  const n = r.scopes.length;
+  if (focus >= 0) {
+    for (const withLic of [true, false]) {
+      const j = build((i) => i === focus, withLic, n);
+      if (fits(j)) return j;
+    }
+  } else {
+    for (const withLic of [true, false]) {
+      for (let k = n; k >= 0; k--) {
+        const j = build((i) => i < k, withLic, n);
+        if (fits(j)) return j;
+      }
+    }
   }
-  return out;
+  // Even the status-only skeleton is too big: report fewer scopes, explicitly counted.
+  for (let m = n - 1; m >= 0; m--) {
+    const j = build(() => false, false, m);
+    if (fits(j)) return j;
+  }
+  return build(() => false, false, 0);
 }
 
 async function recentStockingTool(input: { slug?: string; limit?: number }, ctx: ToolContext): Promise<string> {
@@ -667,7 +714,7 @@ export async function executeTool(
     case "find_waters":
       return findWatersTool(input as { query?: string; near?: boolean; limit?: number }, ctx);
     case "get_water_rules":
-      return getWaterRulesTool(input as { slug?: string; date?: string }, ctx);
+      return getWaterRulesTool(input as { slug?: string; date?: string; scope?: string }, ctx);
     case "recent_stocking":
       return recentStockingTool(input as { slug?: string; limit?: number }, ctx);
     default:
