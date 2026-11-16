@@ -3,7 +3,11 @@
 import dayjs from "dayjs";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import LocationChooser from "@/components/location-chooser";
+import UnifiedSearch, { type SpeciesHit } from "@/components/unified-search";
+import { searchCatalog } from "@/lib/chat/tools.ts";
+import { speciesRoute } from "@/lib/chat/species-route.ts";
 import TripCard from "@/components/trip-card/trip-card";
 import ForageHalf, { type ForagePick } from "@/components/trip-card/forage-half";
 import FishHalf, { useNearbyFish } from "@/components/trip-card/fish-half";
@@ -27,6 +31,13 @@ const FieldMap = dynamic(() => import("@/components/field-map/field-map.tsx"), {
     </div>
   ),
 });
+
+function searchSpecies(q: string): SpeciesHit[] {
+  return searchCatalog({ query: q, limit: 5 }).flatMap((h) => {
+    const route = speciesRoute(h.id);
+    return route ? [{ id: h.id, common: h.common, scientific: h.scientific, href: route.href }] : [];
+  });
+}
 
 const WATER_BY_SLUG = new Map(FISH_WATERS.map((w) => [w.slug, w]));
 const SAFE_TO_SUGGEST = new Set(["choice", "edible", "edible-with-caution", "edible-when-cooked"]);
@@ -80,7 +91,9 @@ export default function HomePage() {
   const vh = useViewportHeight();
 
   const [expanded, setExpanded] = useState(false);
+  const router = useRouter();
   const [chooserOpen, setChooserOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [sheetSlug, setSheetSlug] = useState<string | null>(null);
   const [spotlight, setSpotlight] = useState<Line | null>(null);
   const [focus, setFocus] = useState<[number, number] | null>(null);
@@ -189,8 +202,7 @@ export default function HomePage() {
         type="button"
         className="kp-search-btn"
         aria-label="Search"
-        // Task 10 replaces this with unified search; for now it opens the location search.
-        onClick={() => setChooserOpen(true)}
+        onClick={() => setSearchOpen(true)}
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" aria-hidden>
           <circle cx="11" cy="11" r="7" />
@@ -248,6 +260,22 @@ export default function HomePage() {
       >
         <TodayDetail reading={reading} />
       </TripCard>
+
+      {searchOpen && (
+        <UnifiedSearch
+          searchSpecies={searchSpecies}
+          onClose={() => setSearchOpen(false)}
+          onOpenWater={(slug) => {
+            setSearchOpen(false);
+            openWater(slug);
+          }}
+          onOpenSpecies={(hit) => router.push(hit.href)}
+          onChangeLocation={() => {
+            setSearchOpen(false);
+            setChooserOpen(true);
+          }}
+        />
+      )}
 
       {sheetSlug && <RulesSheet key={sheetSlug} slug={sheetSlug} onClose={closeSheet} onSpotlight={setSpotlight} />}
     </main>

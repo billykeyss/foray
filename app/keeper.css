@@ -1384,3 +1384,52 @@
 @media (min-width: 1536px) {
   .kp-home-map { right: 300px; }
 }
+
+/* Task 10: unified search overlay + Guide → Fish */
+.kp.kp-search { position: fixed; inset: 0; z-index: 80; }
+.kp .kp-search-scrim { position: absolute; inset: 0; border: 0; background: rgba(26, 43, 34, 0.45); cursor: default; }
+.kp .kp-search-panel {
+  position: relative; margin: calc(12px + var(--kp-safe-top)) auto 0; width: calc(100% - 24px); max-width: 560px;
+  max-height: calc(100dvh - 24px - var(--kp-safe-top)); display: flex; flex-direction: column;
+  background: var(--kp-bone); color: var(--kp-ink); border-radius: var(--kp-radius-card); box-shadow: var(--kp-shadow-soft);
+  overflow: hidden;
+}
+.kp .kp-search-field { display: flex; align-items: center; gap: 10px; padding: 0 12px 0 14px; height: 52px; border-bottom: var(--kp-hairline); flex: none; }
+.kp .kp-search-field input { flex: 1; min-width: 0; height: 100%; border: 0; background: transparent; font: 500 16px var(--kp-font-body); color: var(--kp-ink); outline: none; }
+.kp .kp-search-x { border: 0; background: transparent; font: 600 13px var(--kp-font-body); color: var(--kp-river); min-height: 44px; padding: 0 4px; cursor: pointer; }
+.kp .kp-search-list { overflow-y: auto; padding: 4px 0 8px; }
+.kp .kp-search-h { margin: 0; padding: 12px 16px 4px; font: 600 11px var(--kp-font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--kp-ink-64); }
+.kp .kp-search-row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; min-height: 48px; padding: 8px 16px; border: 0; background: transparent; text-align: left; cursor: pointer; font-family: var(--kp-font-body); color: var(--kp-ink); }
+.kp .kp-search-row:hover { background: var(--kp-ink-08); }
+.kp .kp-search-name { font-size: 15px; font-weight: 600; }
+.kp .kp-search-sub { font-size: 12.5px; color: var(--kp-ink-64); }
+.kp .kp-search-sci { font-style: italic; }
+.kp .kp-search-empty { padding: 14px 16px; margin: 0; font-size: 14px; color: var(--kp-ink-64); }
+.kp .kp-search-field input:focus-visible { outline: none; }
+.kp .kp-search-row:focus-visible, .kp .kp-search-x:focus-visible { outline: 3px solid var(--kp-amber); outline-offset: -3px; }
+
+.kp.kp-fish { min-height: 100dvh; background: var(--kp-grain) 0 0 / 4px 4px, var(--kp-bone); color: var(--kp-ink); padding: 56px 0 calc(100px + var(--kp-safe-bottom)); }
+.kp .kp-fish-inner { max-width: 860px; margin: 0 auto; padding: 0 20px; }
+.kp .kp-fish-title { font: 600 clamp(30px, 6vw, 44px)/1.05 var(--kp-font-display); margin: 18px 0 6px; }
+.kp .kp-fish-lede { margin: 0 0 16px; font-size: 14px; color: var(--kp-ink-64); max-width: 60ch; }
+.kp .kp-fish-filters { display: grid; grid-template-columns: 1fr; gap: 8px; margin-bottom: 8px; }
+@media (min-width: 640px) { .kp .kp-fish-filters { grid-template-columns: 2fr 1fr 1.4fr; } }
+.kp .kp-fish-filters input, .kp .kp-fish-filters select {
+  height: 44px; padding: 0 12px; border: var(--kp-hairline); border-radius: 10px; background: var(--kp-bone-2);
+  font: 500 15px var(--kp-font-body); color: var(--kp-ink); min-width: 0;
+}
+.kp .kp-fish-filters input:focus-visible, .kp .kp-fish-filters select:focus-visible { outline: 3px solid var(--kp-amber); outline-offset: 1px; }
+.kp .kp-fish-count { font: 500 12px var(--kp-font-mono); color: var(--kp-ink-64); margin: 10px 0 6px; }
+.kp .kp-fish-list { list-style: none; margin: 0; padding: 0; border-top: var(--kp-hairline); }
+.kp .kp-fish-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: var(--kp-hairline); }
+.kp .kp-fish-row-main { flex: 1; min-width: 0; }
+.kp .kp-fish-row-name { font-size: 15px; font-weight: 600; color: var(--kp-ink); text-decoration: none; display: block; }
+.kp .kp-fish-row-meta { font-size: 12.5px; color: var(--kp-ink-64); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kp .kp-fish-row-links { display: flex; gap: 6px; flex: none; }
+.kp .kp-fish-link { display: inline-flex; align-items: center; min-height: 44px; padding: 0 10px; font: 600 13px var(--kp-font-body); color: var(--kp-river); text-decoration: none; border-radius: 8px; }
+.kp .kp-fish-link:hover { background: var(--kp-ink-08); }
+.kp .kp-fish-link:focus-visible, .kp .kp-fish-row-name:focus-visible, .kp .kp-fish-more:focus-visible { outline: 3px solid var(--kp-amber); outline-offset: 1px; }
+.kp .kp-fish-more { display: block; margin: 14px auto 0; min-height: 44px; padding: 0 18px; border: var(--kp-hairline); border-radius: 999px; background: var(--kp-bone-2); font: 600 14px var(--kp-font-body); color: var(--kp-ink); cursor: pointer; }
+.kp .kp-fish-h2 { font: 600 22px var(--kp-font-display); margin: 36px 0 4px; }
+.kp .kp-fish-note { font-size: 12.5px; color: var(--kp-ink-64); margin: 0 0 6px; }
+.kp .kp-fish-stock-meta { font: 500 12px var(--kp-font-mono); color: var(--kp-ink-64); }

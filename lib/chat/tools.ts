@@ -17,6 +17,13 @@ import type { OceanSpecies } from "../ocean-types";
 import { fetchWeather, computeSporeScore } from "../weather.ts";
 import { selectCandidates, scoreCandidates } from "../spot-finder.ts";
 import type { JournalEntry } from "../journal.ts";
+import { searchWaters } from "../fishing/search.ts";
+import { nearestWaters } from "../fishing/nearby.ts";
+import { loadWater as defaultLoadWater } from "../fishing/load.ts";
+import { resolveDataset } from "../fishing/resolve.ts";
+import { isValidIsoDate } from "../fishing/engine/index.ts";
+import { localIsoDate } from "../fishing/local-date.ts";
+import type { WaterDataset } from "../fishing/types.ts";
 
 export type CatalogKind = "mushroom" | "plant" | "ocean";
 
@@ -115,6 +122,45 @@ export const TOOL_SCHEMAS = [
     input_schema: {
       type: "object" as const,
       properties: { limit: { type: "number", description: "Default 10, cap 25" } },
+      required: [],
+    },
+  },
+  {
+    name: "find_waters",
+    description:
+      "Find California/Nevada fishing waters by name or fish species, or the waters nearest the user (near: true). Returns slugs for get_water_rules.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        query: { type: "string", description: "Water name fragment or fish species, e.g. 'donner' or 'golden trout'" },
+        near: { type: "boolean", description: "Use the user's saved location instead of a query" },
+        limit: { type: "number", description: "Max results, default 8, cap 15" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_water_rules",
+    description:
+      "Today's fishing status and rules for one water (slug from find_waters): open / catch & release / closed, with each rule's citation, source link, confidence and the data's as-of date. A convenience summary, not legal advice.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        slug: { type: "string", description: "Exact water slug from find_waters, e.g. 'donner-lake'" },
+        date: { type: "string", description: "YYYY-MM-DD; defaults to today (device local date)" },
+      },
+      required: ["slug"],
+    },
+  },
+  {
+    name: "recent_stocking",
+    description: "Recent fish stocking events (newest first), optionally for one water slug.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        slug: { type: "string", description: "Water slug to filter by" },
+        limit: { type: "number", description: "Max events, default 10, cap 25" },
+      },
       required: [],
     },
   },
@@ -345,6 +391,106 @@ export interface ToolContext {
   lon: number | null;
   locationLabel: string;
   regionId: RegionId;
+  /** Injectable for node tests; defaults to fetching /fishing/w/<slug>.json. */
+  loadWater?: (slug: string) => Promise<WaterDataset>;
+  /** Injectable for node tests; defaults to fetching /fishing/stocking-recent.json. */
+  loadStocking?: () => Promise<StockingRow[]>;
+}
+
+export interface StockingRow {
+  slug: string;
+  waterName: string;
+  species: string;
+  quantity: number | null;
+  sizeNote: string | null;
+  date: string;
+  sourceUrl: string | null;
+}
+
+export const FISHING_DISCLAIMER =
+  "A convenience summary, not legal advice — confirm with the managing agency (CDFW / NDOW) before you fish.";
+
+async function defaultLoadStocking(): Promise<StockingRow[]> {
+  const res = await fetch("/fishing/stocking-recent.json");
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as StockingRow[];
+}
+
+function findWatersTool(input: { query?: string; near?: boolean; limit?: number }, ctx: ToolContext): string {
+  const limit = Math.max(1, Math.min(input.limit ?? 8, 15));
+  if (input.near) {
+    if (ctx.lat == null || ctx.lon == null) {
+      return "Error: the user has no location set — ask them to pick one on the map, or search by name with query.";
+    }
+    return capJson(
+      nearestWaters(ctx.lat, ctx.lon, limit).map((w) => ({
+        slug: w.slug,
+        name: w.name,
+        waterType: w.waterType,
+        states: w.states,
+        distanceMi: Number(w.distanceMi.toFixed(1)),
+      })),
+    );
+  }
+  const q = input.query?.trim();
+  if (!q) return "Error: pass a query (water name or fish species) or near: true.";
+  return capJson(searchWaters(q, limit).map((w) => ({ slug: w.slug, name: w.name, waterType: w.waterType, states: w.states })));
+}
+
+async function getWaterRulesTool(input: { slug?: string; date?: string }, ctx: ToolContext): Promise<string> {
+  const slug = String(input.slug ?? "");
+  const on = input.date ?? localIsoDate();
+  if (!isValidIsoDate(on)) return `Error: invalid date "${on}" — use a real calendar date as YYYY-MM-DD.`;
+  let ds: WaterDataset;
+  try {
+    ds = await (ctx.loadWater ?? defaultLoadWater)(slug);
+  } catch {
+    return `Error: no fishing water with slug "${slug}". Call find_waters to look up the right slug.`;
+  }
+  const r = resolveDataset(ds, on);
+  const rule = (x: (typeof r.scopes)[number]["rules"][number]) => ({
+    summary: x.summary,
+    citation: x.citation,
+    sourceUrl: x.sourceUrl,
+    confidence: x.confidence,
+    polarity: x.polarity,
+    appliesTo: x.appliesTo,
+    species: x.species,
+    ...(x.periods ? { periods: x.periods } : {}),
+  });
+  const full = {
+    water: { slug: r.water.slug, name: r.water.name, waterType: r.water.waterType, states: r.water.states },
+    status: r.status,
+    asOf: r.asOf,
+    dataAsOf: r.dataAsOf,
+    scopes: r.scopes.map((s) => ({ scope: s.scope, status: s.status, sublabel: s.sublabel, rules: s.rules.map(rule) })),
+    licenses: r.licenses.map((l) => ({ authority: l.authority, ...rule(l) })),
+    disclaimer: FISHING_DISCLAIMER,
+  };
+  // Shed per-rule detail from the tail, never the scope statuses or citations, until the JSON fits.
+  let out = JSON.stringify(full);
+  if (out.length > TOOL_RESULT_CAP) {
+    const lean = { ...full, licenses: full.licenses.slice(0, 3) };
+    out = JSON.stringify(lean);
+    for (let i = lean.scopes.length - 1; i >= 0 && out.length > TOOL_RESULT_CAP; i--) {
+      lean.scopes = lean.scopes.map((s, j) => (j >= i && j > 0 ? { ...s, rules: s.rules.slice(0, 2) } : s));
+      out = JSON.stringify(lean);
+    }
+    if (out.length > TOOL_RESULT_CAP) out = capJson(lean);
+  }
+  return out;
+}
+
+async function recentStockingTool(input: { slug?: string; limit?: number }, ctx: ToolContext): Promise<string> {
+  let rows: StockingRow[];
+  try {
+    rows = await (ctx.loadStocking ?? defaultLoadStocking)();
+  } catch {
+    return "Error: recent stocking data could not be loaded (offline?).";
+  }
+  const limit = Math.max(1, Math.min(input.limit ?? 10, 25));
+  const out = rows.filter((e) => !input.slug || e.slug === input.slug).slice(0, limit);
+  return capJson(out);
 }
 
 export interface ToolCard {
@@ -518,6 +664,12 @@ export async function executeTool(
       onCard({ tool: "read_journal", data: { count: entries.length } });
       return capJson(entries);
     }
+    case "find_waters":
+      return findWatersTool(input as { query?: string; near?: boolean; limit?: number }, ctx);
+    case "get_water_rules":
+      return getWaterRulesTool(input as { slug?: string; date?: string }, ctx);
+    case "recent_stocking":
+      return recentStockingTool(input as { slug?: string; limit?: number }, ctx);
     default:
       throw new Error(`Unknown tool: ${name}`);
   }
