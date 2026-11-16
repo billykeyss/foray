@@ -1433,3 +1433,53 @@
 .kp .kp-fish-h2 { font: 600 22px var(--kp-font-display); margin: 36px 0 4px; }
 .kp .kp-fish-note { font-size: 12.5px; color: var(--kp-ink-64); margin: 0 0 6px; }
 .kp .kp-fish-stock-meta { font: 500 12px var(--kp-font-mono); color: var(--kp-ink-64); }
+
+/* Task 12: pin / saved-spot card over the map, catch form, saved-spots list */
+.kp.kp-pin-card {
+  position: fixed;
+  z-index: 44;
+  left: 12px;
+  right: 12px;
+  margin: 0 auto;
+  max-width: 456px;
+  bottom: calc(var(--kp-trip-peek, 46dvh) + 14px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px 10px 14px;
+  background: var(--kp-bone);
+  border: var(--kp-hairline);
+  border-radius: var(--kp-radius-card);
+  box-shadow: var(--kp-shadow-soft);
+}
+.kp .kp-pin-text { flex: 1; min-width: 0; }
+.kp .kp-pin-title { font-family: var(--kp-font-display); font-size: 17px; line-height: 1.15; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kp .kp-pin-sub { font-family: var(--kp-font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--kp-ink-64); margin-top: 2px; }
+.kp .kp-pin-btn { min-height: 40px; padding: 0 14px; border-radius: var(--kp-radius-pill); border: var(--kp-hairline); background: var(--kp-bone-2); color: var(--kp-ink); font: inherit; font-size: 14px; cursor: pointer; }
+.kp .kp-pin-btn-primary { background: var(--kp-warden); border-color: var(--kp-warden); color: var(--kp-bone); }
+.kp .kp-pin-x { padding: 0; width: 40px; font-size: 20px; line-height: 1; }
+@media (min-width: 1024px) {
+  .kp.kp-pin-card { left: 700px; right: 40px; bottom: 28px; margin: 0; max-width: 420px; }
+}
+
+.kp.kp-catch { margin: 4px 0 16px; padding: 12px; border: var(--kp-hairline); border-radius: var(--kp-radius-card); background: var(--kp-bone); color: var(--kp-ink); }
+.kp.kp-catch label { display: block; font-family: var(--kp-font-mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--kp-ink-64); margin: 10px 0 4px; }
+.kp.kp-catch label:first-child { margin-top: 0; }
+.kp.kp-catch input[type="text"], .kp.kp-catch input[type="number"] { width: 100%; min-height: 44px; padding: 0 12px; border: var(--kp-hairline); border-radius: 10px; background: var(--kp-bone-2); font: inherit; font-size: 16px; color: var(--kp-ink); }
+.kp .kp-catch-hits { margin-top: 6px; display: flex; flex-direction: column; border: var(--kp-hairline); border-radius: 10px; overflow: hidden; }
+.kp .kp-catch-hits button { text-align: left; min-height: 44px; padding: 0 12px; border: 0; border-bottom: 1px solid var(--kp-ink-08); background: var(--kp-bone-2); font: inherit; font-size: 15px; color: var(--kp-ink); cursor: pointer; }
+.kp .kp-catch-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.kp .kp-seg { display: flex; border: var(--kp-hairline); border-radius: 10px; overflow: hidden; }
+.kp .kp-seg button { flex: 1; min-height: 44px; border: 0; background: var(--kp-bone-2); font: inherit; font-size: 15px; color: var(--kp-ink); cursor: pointer; }
+.kp .kp-seg button[aria-pressed="true"] { background: var(--kp-warden); color: var(--kp-bone); }
+.kp .kp-warn { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--kp-warn-bg); border: 1px solid color-mix(in srgb, var(--kp-brass) 40%, transparent); font-size: 14px; line-height: 1.35; }
+.kp .kp-warn-cite { margin-top: 4px; font-family: var(--kp-font-mono); font-size: 11px; color: var(--kp-ink-64); }
+.kp .kp-warn-cite a { color: var(--kp-brass-ink); }
+.kp .kp-catch-note { margin-top: 8px; font-family: var(--kp-font-mono); font-size: 11px; letter-spacing: 0.06em; color: var(--kp-ink-64); }
+.kp.kp-spots { margin-top: 28px; }
+.kp.kp-spots h2 { font-family: var(--kp-font-mono); font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--kp-ink-64); margin-bottom: 8px; }
+.kp .kp-spot-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--kp-ink-12); }
+.kp .kp-spot-row a { flex: 1; min-width: 0; color: var(--kp-ink); text-decoration: none; }
+.kp .kp-spot-row small { display: block; font-family: var(--kp-font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--kp-ink-64); }
+.kp .kp-spot-row button { min-height: 36px; padding: 0 12px; border-radius: 999px; border: var(--kp-hairline); background: var(--kp-bone-2); font: inherit; font-size: 13px; cursor: pointer; color: var(--kp-ink); }
+.kp.kp-catch-tag { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 6px; background: var(--kp-warden); color: var(--kp-bone); font-family: var(--kp-font-mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; vertical-align: middle; font-style: normal; }

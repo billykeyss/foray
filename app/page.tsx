@@ -19,6 +19,8 @@ import { useUnits } from "@/lib/units-context";
 import { computeSporeScore, suggestSpeciesList, type DailyWeather } from "@/lib/weather";
 import { settledFishStatuses, tripHeadline } from "@/lib/trip-headline.ts";
 import { FISH_WATERS } from "@/lib/fishing/waters-index.ts";
+import { nearestWaters } from "@/lib/fishing/nearby.ts";
+import { defaultSpotKind, useSavedSpots, type SpotKind } from "@/lib/saved-spots.ts";
 
 const FieldMap = dynamic(() => import("@/components/field-map/field-map.tsx"), {
   ssr: false,
@@ -97,6 +99,9 @@ export default function HomePage() {
   const [sheetSlug, setSheetSlug] = useState<string | null>(null);
   const [spotlight, setSpotlight] = useState<Line | null>(null);
   const [focus, setFocus] = useState<[number, number] | null>(null);
+  const { spots: savedSpots, add: addSpot, remove: removeSpot } = useSavedSpots();
+  /** The card over the map: a freshly dropped pin (offers Save) or a tapped saved spot (offers Remove). */
+  const [pinCard, setPinCard] = useState<{ type: "pin"; lon: number; lat: number } | { type: "saved"; id: string } | null>(null);
   const [peekPx, setPeekPx] = useState<number | null>(null);
 
   // The map home doesn't scroll; the card scrolls inside itself.
@@ -120,7 +125,11 @@ export default function HomePage() {
 
   // Deep link: /?spot=<slug> opens that water's rules. Unknown slugs are ignored.
   useEffect(() => {
-    const slug = new URLSearchParams(window.location.search).get("spot");
+    const qs = new URLSearchParams(window.location.search);
+    const fLat = Number(qs.get("lat"));
+    const fLon = Number(qs.get("lon"));
+    if (qs.has("lat") && qs.has("lon") && Number.isFinite(fLat) && Number.isFinite(fLon)) setFocus([fLon, fLat]);
+    const slug = qs.get("spot");
     if (slug && WATER_BY_SLUG.has(slug)) openWater(slug);
     else if (slug) setSpotParam(null);
   }, [openWater]);
@@ -157,6 +166,13 @@ export default function HomePage() {
     () => (hasLocation ? [{ id: "pin", lon: lon!, lat: lat!, label: label || "Pin" }] : []),
     [hasLocation, lat, lon, label],
   );
+  const savedMarkers = useMemo(() => savedSpots.map((s) => ({ id: s.id, lon: s.lon, lat: s.lat, label: s.label })), [savedSpots]);
+  const cardSpot = pinCard?.type === "saved" ? savedSpots.find((s) => s.id === pinCard.id) : undefined;
+  const saveCurrentPin = (lon: number, lat: number, kind: SpotKind) => {
+    const near = nearestWaters(lat, lon, 1, 0.25)[0];
+    const spot = addSpot({ lon, lat, kind, label: near ? `${near.name} spot` : `Spot ${lat.toFixed(3)}, ${lon.toFixed(3)}` });
+    setPinCard({ type: "saved", id: spot.id });
+  };
   const center: [number, number] = focus ?? [lon ?? -120.18, lat ?? 39.33];
   const padding = useMemo(
     () =>
@@ -229,10 +245,18 @@ export default function HomePage() {
           waters={FISH_WATERS}
           spotlightLine={spotlight}
           onWaterTap={openWater}
+          savedSpots={savedMarkers}
           onSpotTap={() => {}}
+          onSavedSpotTap={(id) => {
+            const sp = savedSpots.find((x) => x.id === id);
+            if (!sp) return;
+            setFocus([sp.lon, sp.lat]);
+            setPinCard({ type: "saved", id });
+          }}
           onLongPress={(lo, la) => {
             setFocus(null);
             setLocation(la, lo, `Pin ${la.toFixed(2)}, ${lo.toFixed(2)}`);
+            setPinCard({ type: "pin", lon: lo, lat: la });
           }}
           padding={padding}
         />
@@ -260,6 +284,40 @@ export default function HomePage() {
       >
         <TodayDetail reading={reading} />
       </TripCard>
+
+      {pinCard && (pinCard.type === "pin" || cardSpot) && (
+        <div className="kp kp-pin-card" role="dialog" aria-label={pinCard.type === "pin" ? "Dropped pin" : "Saved spot"}>
+          <div className="kp-pin-text">
+            <div className="kp-pin-title">
+              {pinCard.type === "pin" ? "Pin dropped" : cardSpot!.label}
+            </div>
+            <div className="kp-pin-sub">
+              {pinCard.type === "pin"
+                ? `${pinCard.lat.toFixed(4)}, ${pinCard.lon.toFixed(4)}`
+                : `Saved spot · ${cardSpot!.kind === "both" ? "forage + fish" : cardSpot!.kind}`}
+            </div>
+          </div>
+          {pinCard.type === "pin" ? (
+            <button type="button" className="kp-pin-btn kp-pin-btn-primary" onClick={() => saveCurrentPin(pinCard.lon, pinCard.lat, defaultSpotKind(pinCard.lat, pinCard.lon))}>
+              Save spot
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="kp-pin-btn"
+              onClick={() => {
+                removeSpot(cardSpot!.id);
+                setPinCard(null);
+              }}
+            >
+              Remove
+            </button>
+          )}
+          <button type="button" className="kp-pin-btn kp-pin-x" aria-label="Dismiss" onClick={() => setPinCard(null)}>
+            ×
+          </button>
+        </div>
+      )}
 
       {searchOpen && (
         <UnifiedSearch

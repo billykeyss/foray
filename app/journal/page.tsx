@@ -2,7 +2,12 @@
 
 import dayjs from "dayjs";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useJournal, type JournalWeatherSnapshot } from "@/lib/journal";
+import { entryKind, useJournal, type JournalWeatherSnapshot } from "@/lib/journal";
+import JournalCatchFields, { type CatchForm } from "@/components/journal-catch-fields";
+import { useSavedSpots } from "@/lib/saved-spots.ts";
+import { localIsoDate } from "@/lib/fishing/local-date.ts";
+import { FISH_WATERS } from "@/lib/fishing/waters-index.ts";
+import Link from "next/link";
 import { useLocation } from "@/lib/location-context";
 import { computeSporeScore } from "@/lib/weather";
 import { compressPhoto, dataUrlSize } from "@/lib/photo";
@@ -47,17 +52,30 @@ export default function JournalPage() {
   const [gpsAccuracy, setGpsAccuracy] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const { spots: savedSpots, remove: removeSpot } = useSavedSpots();
+  const [formKind, setFormKind] = useState<"find" | "catch">("find");
+  const EMPTY_CATCH: CatchForm = { waterSlug: "", species: "", length: "", kept: false };
+  const [catchForm, setCatchForm] = useState<CatchForm>(EMPTY_CATCH);
 
   // Seed form values when opened
   useEffect(() => {
     if (!open) return;
     if (mode === "edit" && editingEntry) {
+      setFormKind(entryKind(editingEntry));
+      const c = editingEntry.catch;
+      setCatchForm(
+        c
+          ? { waterSlug: c.waterSlug ?? "", species: c.species ?? "", length: c.length_in != null ? String(c.length_in) : "", kept: c.kept }
+          : EMPTY_CATCH,
+      );
       setSpecies(editingEntry.species);
       setNotes(editingEntry.notes ?? "");
       setPhoto(editingEntry.photoDataUrl ?? null);
       setFormLat(editingEntry.lat != null ? editingEntry.lat.toFixed(5) : "");
       setFormLon(editingEntry.lon != null ? editingEntry.lon.toFixed(5) : "");
     } else {
+      setFormKind("find");
+      setCatchForm(EMPTY_CATCH);
       if (lat != null && lon != null) {
         setFormLat(lat.toFixed(5));
         setFormLon(lon.toFixed(5));
@@ -113,7 +131,8 @@ export default function JournalPage() {
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     setSaveError(null);
-    if (!species.trim()) return;
+    const isCatch = formKind === "catch";
+    if (isCatch ? !catchForm.waterSlug : !species.trim()) return;
 
     const parsedLat = formLat ? Number(formLat) : undefined;
     const parsedLon = formLon ? Number(formLon) : undefined;
@@ -138,8 +157,29 @@ export default function JournalPage() {
         }
       : undefined;
 
+    const catchSpecies = catchForm.species.trim();
+    const lenNum = catchForm.length.trim() === "" ? undefined : Number(catchForm.length);
+    const catchData = {
+      waterSlug: catchForm.waterSlug,
+      species: catchSpecies || undefined,
+      length_in: lenNum != null && Number.isFinite(lenNum) ? lenNum : undefined,
+      kept: catchForm.kept,
+    };
+    const waterName = FISH_WATERS.find((w) => w.slug === catchForm.waterSlug)?.name ?? "Unnamed water";
+
     try {
-      if (mode === "edit" && editingEntry) {
+      if (mode === "edit" && editingEntry && isCatch) {
+        update(editingEntry.id, {
+          species: catchSpecies || "Catch",
+          location: waterName,
+          notes: notes.trim(),
+          lat: cleanLat,
+          lon: cleanLon,
+          photoDataUrl: photo ?? undefined,
+          kind: "catch",
+          catch: catchData,
+        });
+      } else if (mode === "edit" && editingEntry) {
         // Edits preserve the original date / capturedAt / weather snapshot —
         // only the user-edited fields change. (Conditions were the conditions
         // at find-time; we shouldn't rewrite them after the fact.)
@@ -149,6 +189,19 @@ export default function JournalPage() {
           lat: cleanLat,
           lon: cleanLon,
           photoDataUrl: photo ?? undefined,
+        });
+      } else if (isCatch) {
+        add({
+          date: localIsoDate(),
+          capturedAt: new Date().toISOString(),
+          species: catchSpecies || "Catch",
+          location: waterName,
+          notes: notes.trim(),
+          lat: cleanLat,
+          lon: cleanLon,
+          photoDataUrl: photo ?? undefined,
+          kind: "catch",
+          catch: catchData,
         });
       } else {
         add({
@@ -277,7 +330,14 @@ export default function JournalPage() {
                 }}
               >
                 {e.species}
+                {entryKind(e) === "catch" && <span className="kp kp-catch-tag">Catch</span>}
               </div>
+              {e.catch && (
+                <div className="font-mono mt-1.5" style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--ink-soft)" }}>
+                  {e.catch.length_in != null ? `${e.catch.length_in} in · ` : ""}
+                  {e.catch.kept ? "kept" : "released"}
+                </div>
+              )}
               <div
                 className="font-mono mt-1.5"
                 style={{
@@ -396,6 +456,28 @@ export default function JournalPage() {
         ))}
       </ul>
 
+      {loaded && (
+        <section className="kp kp-spots" aria-label="Saved spots">
+          <h2>Saved spots · {savedSpots.length}</h2>
+          {savedSpots.length === 0 && (
+            <p style={{ fontSize: 14, color: "var(--kp-ink-64)" }}>Long-press the map, then tap Save spot.</p>
+          )}
+          {savedSpots.map((sp) => (
+            <div key={sp.id} className="kp-spot-row">
+              <Link href={`/?lat=${sp.lat}&lon=${sp.lon}`}>
+                {sp.label}
+                <small>
+                  {sp.kind === "both" ? "forage + fish" : sp.kind} · {formatLatLon(sp.lat, sp.lon, 3)}
+                </small>
+              </Link>
+              <button type="button" onClick={() => removeSpot(sp.id)} aria-label={`Remove ${sp.label}`}>
+                Remove
+              </button>
+            </div>
+          ))}
+        </section>
+      )}
+
       {/* FAB */}
       <button
         onClick={() => setEditing("new")}
@@ -458,11 +540,11 @@ export default function JournalPage() {
             <h2 className="title-hero" style={{ fontSize: 28, marginBottom: 4 }}>
               {mode === "edit" ? (
                 <>
-                  Edit <em>finding</em>.
+                  Edit <em>{formKind === "catch" ? "catch" : "finding"}</em>.
                 </>
               ) : (
                 <>
-                  New <em>finding</em>.
+                  New <em>{formKind === "catch" ? "catch" : "finding"}</em>.
                 </>
               )}
             </h2>
@@ -485,14 +567,38 @@ export default function JournalPage() {
                 )}
             </p>
 
-            <FieldLabel>Species</FieldLabel>
-            <input
-              autoFocus
-              value={species}
-              onChange={(e) => setSpecies(e.target.value)}
-              placeholder="Golden chanterelle"
-              className="field-input mb-4"
-            />
+            {mode === "new" && (
+              <div className="kp mb-4">
+                <div className="kp-seg" role="group" aria-label="Entry type">
+                  <button type="button" aria-pressed={formKind === "find"} onClick={() => setFormKind("find")}>
+                    Find
+                  </button>
+                  <button type="button" aria-pressed={formKind === "catch"} onClick={() => setFormKind("catch")}>
+                    Catch
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {formKind === "catch" ? (
+              <JournalCatchFields
+                value={catchForm}
+                onChange={(patch) => setCatchForm((c) => ({ ...c, ...patch }))}
+                date={mode === "edit" && editingEntry ? editingEntry.date : localIsoDate()}
+                near={lat != null && lon != null ? { lat, lon } : null}
+              />
+            ) : (
+              <>
+                <FieldLabel>Species</FieldLabel>
+                <input
+                  autoFocus
+                  value={species}
+                  onChange={(e) => setSpecies(e.target.value)}
+                  placeholder="Golden chanterelle"
+                  className="field-input mb-4"
+                />
+              </>
+            )}
 
             <FieldLabel>Photo</FieldLabel>
             <div className="mb-4">
@@ -645,15 +751,19 @@ export default function JournalPage() {
                   : "Edit the fields above, or tap the button for a fresh GPS fix")}
             </div>
 
-            <FieldLabel>
-              {mode === "edit" ? "Conditions at find-time" : "Conditions"}
-            </FieldLabel>
-            <ConditionsCard
-              mode={mode}
-              reading={reading}
-              rain24h={rain24h}
-              snapshot={editingEntry?.weather}
-            />
+            {formKind === "find" && (
+              <>
+                <FieldLabel>
+                  {mode === "edit" ? "Conditions at find-time" : "Conditions"}
+                </FieldLabel>
+                <ConditionsCard
+                  mode={mode}
+                  reading={reading}
+                  rain24h={rain24h}
+                  snapshot={editingEntry?.weather}
+                />
+              </>
+            )}
 
             <FieldLabel>Notes</FieldLabel>
             <textarea

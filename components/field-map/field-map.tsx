@@ -14,6 +14,9 @@ import {
   BLM,
   FOREST,
   SPOTS_LAYER,
+  SAVED_LAYER,
+  SAVED_SRC,
+  savedFeatures,
   SPOTS_SRC,
   WATER_CLUSTERS,
   WATER_PINS,
@@ -27,6 +30,9 @@ export interface FieldMapProps {
   base: BaseId;
   overlays: Overlays;
   forageSpots: ForageSpot[];
+  /** User-saved spots, drawn as rust diamonds. */
+  savedSpots?: ForageSpot[];
+  onSavedSpotTap?: (id: string) => void;
   waters: WaterSummary[];
   spotlightLine: [number, number][] | null;
   onWaterTap: (slug: string) => void;
@@ -70,7 +76,7 @@ export default function FieldMap(props: FieldMapProps) {
     const offTerrain = keepTerrain(map, { exaggeration: 1.3 });
     const onStyle = () => {
       const p = latest.current;
-      addFieldLayers(map, { overlays: overlaysRef.current, waters: p.waters, spots: p.forageSpots, line: p.spotlightLine });
+      addFieldLayers(map, { overlays: overlaysRef.current, waters: p.waters, spots: p.forageSpots, saved: p.savedSpots, line: p.spotlightLine });
     };
     map.on("style.load", onStyle);
 
@@ -79,6 +85,8 @@ export default function FieldMap(props: FieldMapProps) {
     map.on("click", (e) => {
       const w = pick([WATER_PINS], e.point);
       if (w) return latest.current.onWaterTap(w.properties?.slug);
+      const sv = pick([SAVED_LAYER], e.point);
+      if (sv) return latest.current.onSavedSpotTap?.(sv.properties?.id);
       const s = pick([SPOTS_LAYER], e.point);
       if (s) return latest.current.onSpotTap(s.properties?.id);
       const c = pick([WATER_CLUSTERS], e.point);
@@ -91,7 +99,7 @@ export default function FieldMap(props: FieldMapProps) {
           );
       }
     });
-    for (const l of [WATER_PINS, SPOTS_LAYER, WATER_CLUSTERS]) {
+    for (const l of [WATER_PINS, SAVED_LAYER, SPOTS_LAYER, WATER_CLUSTERS]) {
       map.on("mouseenter", l, () => (map.getCanvas().style.cursor = "pointer"));
       map.on("mouseleave", l, () => (map.getCanvas().style.cursor = ""));
     }
@@ -153,6 +161,12 @@ export default function FieldMap(props: FieldMapProps) {
     const src = map?.getSource(SPOTS_SRC) as maplibregl.GeoJSONSource | undefined;
     src?.setData(spotFeatures(props.forageSpots));
   }, [props.forageSpots]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    const src = map?.getSource(SAVED_SRC) as maplibregl.GeoJSONSource | undefined;
+    src?.setData(savedFeatures(props.savedSpots ?? []));
+  }, [props.savedSpots]);
 
   const pad = props.padding;
   useEffect(() => {

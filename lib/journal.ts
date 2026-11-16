@@ -19,6 +19,13 @@ export interface JournalWeatherSnapshot {
   label?: string;
 }
 
+export interface JournalCatch {
+  waterSlug?: string;
+  species?: string;
+  length_in?: number;
+  kept: boolean;
+}
+
 export interface JournalEntry {
   id: string;
   date: string; // ISO date (YYYY-MM-DD)
@@ -33,9 +40,17 @@ export interface JournalEntry {
   photoDataUrl?: string;
   /** Snapshot of conditions at time of entry */
   weather?: JournalWeatherSnapshot;
+  /** Absent on legacy entries; read it with `entryKind` (absent means "find"). */
+  kind?: "find" | "catch";
+  catch?: JournalCatch;
   // Legacy top-level fields kept for back-compat with the original schema
   score?: number;
   rain7d?: number;
+}
+
+/** Legacy entries have no `kind`; they are finds. Stored data is never rewritten on read. */
+export function entryKind(e: Pick<JournalEntry, "kind">): "find" | "catch" {
+  return e.kind === "catch" ? "catch" : "find";
 }
 
 const KEY = "mycelium.journal.v1";

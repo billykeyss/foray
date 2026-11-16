@@ -9,6 +9,9 @@ export const WATER_COUNT = "water-cluster-count";
 export const WATER_PINS = "water-pins";
 export const SPOTS_SRC = "spots";
 export const SPOTS_LAYER = "spots-circles";
+export const SAVED_SRC = "saved-spots";
+export const SAVED_LAYER = "saved-spots-pins";
+const DIAMOND = "saved-diamond";
 export const LINE_SRC = "spotlight";
 export const LINE_LAYER = "spotlight-line";
 const SQUARE = "water-square";
@@ -54,6 +57,39 @@ export function spotFeatures(spots: ForageSpot[]) {
   };
 }
 
+export function savedFeatures(spots: ForageSpot[]) {
+  return spotFeatures(spots);
+}
+
+/** Saved spots: a rust diamond with a cream ring, distinct from amber forage circles and blue water squares. */
+function addDiamond(map: Map) {
+  if (map.hasImage(DIAMOND)) return;
+  const size = 32;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const g = c.getContext("2d");
+  if (!g) return;
+  const path = (r: number) => {
+    g.beginPath();
+    g.moveTo(size / 2, size / 2 - r);
+    g.lineTo(size / 2 + r, size / 2);
+    g.lineTo(size / 2, size / 2 + r);
+    g.lineTo(size / 2 - r, size / 2);
+    g.closePath();
+  };
+  g.fillStyle = "#f3efe4";
+  path(14);
+  g.fill();
+  g.fillStyle = "#a14a2a";
+  path(10);
+  g.fill();
+  g.fillStyle = "#f3efe4";
+  g.beginPath();
+  g.arc(size / 2, size / 2, 2.6, 0, Math.PI * 2);
+  g.fill();
+  map.addImage(DIAMOND, g.getImageData(0, 0, size, size));
+}
+
 function addSquare(map: Map) {
   if (map.hasImage(SQUARE)) return;
   const size = 24;
@@ -71,9 +107,10 @@ function addSquare(map: Map) {
 /** Adds every overlay/pin source+layer. Call on each style.load (a new style wipes them). */
 export function addFieldLayers(
   map: Map,
-  s: { overlays: Overlays; waters: WaterSummary[]; spots: ForageSpot[]; line: [number, number][] | null },
+  s: { overlays: Overlays; waters: WaterSummary[]; spots: ForageSpot[]; saved?: ForageSpot[]; line: [number, number][] | null },
 ) {
   addSquare(map);
+  addDiamond(map);
   const vis = (on: boolean) => ({ visibility: on ? "visible" : "none" }) as const;
   if (!map.getSource(FOREST)) {
     map.addSource(FOREST, {
@@ -171,6 +208,15 @@ export function addFieldLayers(
         "circle-stroke-color": "#1a2b22",
         "circle-stroke-width": 2,
       },
+    });
+  }
+  if (!map.getSource(SAVED_SRC)) {
+    map.addSource(SAVED_SRC, { type: "geojson", data: savedFeatures(s.saved ?? []) });
+    map.addLayer({
+      id: SAVED_LAYER,
+      type: "symbol",
+      source: SAVED_SRC,
+      layout: { "icon-image": DIAMOND, "icon-size": 0.9, "icon-allow-overlap": true },
     });
   }
 }
