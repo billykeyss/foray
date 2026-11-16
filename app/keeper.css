@@ -1483,3 +1483,4 @@
 .kp .kp-spot-row small { display: block; font-family: var(--kp-font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--kp-ink-64); }
 .kp .kp-spot-row button { min-height: 36px; padding: 0 12px; border-radius: 999px; border: var(--kp-hairline); background: var(--kp-bone-2); font: inherit; font-size: 13px; cursor: pointer; color: var(--kp-ink); }
 .kp.kp-catch-tag { display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 6px; background: var(--kp-warden); color: var(--kp-bone); font-family: var(--kp-font-mono); font-size: 9px; letter-spacing: 0.14em; text-transform: uppercase; vertical-align: middle; font-style: normal; }
+.kp.kp-catch .kp-catch-select { width: 100%; min-height: 44px; padding: 0 10px; border: var(--kp-hairline); border-radius: 10px; background: var(--kp-bone-2); font: inherit; font-size: 16px; color: var(--kp-ink); }

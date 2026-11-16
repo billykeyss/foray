@@ -24,6 +24,7 @@ export interface JournalCatch {
   species?: string;
   length_in?: number;
   kept: boolean;
+  reachId?: string;
 }
 
 export interface JournalEntry {

@@ -3,7 +3,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { entryKind } from "../lib/journal.ts";
-import { catchWarnings, checkCatch } from "../lib/fishing/catch-check.ts";
+import { catchWarnings, checkCatch, MISSING_HINT } from "../lib/fishing/catch-check.ts";
 import { parseSpots, defaultSpotKind } from "../lib/saved-spots.ts";
 
 const load = (slug) => JSON.parse(fs.readFileSync(`public/fishing/w/${slug}.json`, "utf8"));
@@ -34,7 +34,8 @@ test("no warning when released, long enough, other species, or no length", () =>
   assert.deepEqual(catchWarnings({ species: "Smallmouth bass", length_in: 10, kept: false }, rules), []);
   assert.deepEqual(catchWarnings({ species: "Smallmouth bass", length_in: 12, kept: true }, rules), []);
   assert.deepEqual(catchWarnings({ species: "Rainbow trout", length_in: 5, kept: true }, rules), []);
-  assert.deepEqual(catchWarnings({ species: "Smallmouth bass", kept: true }, rules), []);
+  assert.deepEqual(catchWarnings({ species: "Smallmouth bass", kept: true }, rules).map((w) => w.text), ["Add species and length to check size limits"]);
+  assert.deepEqual(catchWarnings({ species: "Smallmouth bass", kept: false }, rules), []);
 });
 
 test("rules with no species apply to all; maximum length warns", () => {
@@ -65,4 +66,38 @@ test("saved spots: parse tolerates junk, default kind follows nearby water", () 
   assert.deepEqual(parseSpots(JSON.stringify([{ id: "a", lon: -120, lat: 39, label: "L", kind: "both", createdAt: "t" }, { bad: 1 }])).map((s) => s.id), ["a"]);
   assert.equal(defaultSpotKind(39.3228, -120.2644), "fish"); // on Donner Lake
   assert.equal(defaultSpotKind(39.0, -121.9), "both");
+});
+
+test("missing species/length on a kept fish gives the hint; status warnings still run", () => {
+  assert.equal(MISSING_HINT, "Add species and length to check size limits");
+  const w = catchWarnings({ kept: true }, [], "closed");
+  assert.deepEqual(w.map((x) => x.text), ["This water is closed today", MISSING_HINT]);
+});
+
+test("kept trout on Little Truckee: reach C&R warning with citation, source and confidence", () => {
+  const ds = load("little-truckee-river");
+  const r = checkCatch(ds, { species: "Brown trout", length_in: 14, kept: true }, "2026-07-10");
+  const w = r.warnings.find((x) => /^Catch & release only on Little Truckee River/.test(x.text));
+  assert.ok(w, JSON.stringify(r.warnings));
+  assert.match(w.text, /Stampede Dam to Boca Reservoir/);
+  assert.equal(w.citation, "7.50(b)(80)");
+  assert.equal(w.confidence, "high");
+  assert.ok(w.sourceUrl);
+});
+
+test("with the reach picked the copy drops the reach hedge; released stays quiet", () => {
+  const ds = load("little-truckee-river");
+  const r = checkCatch(ds, { species: "Brown trout", length_in: 14, kept: true }, "2026-07-10", "stampede_to_boca");
+  assert.ok(r.warnings.some((x) => x.text === "This reach is catch & release only today" && x.citation));
+  assert.deepEqual(checkCatch(ds, { species: "Brown trout", length_in: 14, kept: false }, "2026-07-10").warnings, []);
+});
+
+test("reach-scoped size rule names the reach; picking it drops the hedge", () => {
+  const ds = load("crowley-lake");
+  const c = { species: "Rainbow trout", length_in: 12, kept: true };
+  const any = checkCatch(ds, c, "2026-09-10").warnings.find((w) => /^Under the 18 in minimum on /.test(w.text));
+  assert.ok(any, "reach-prefixed size warning");
+  assert.ok(any.citation && any.confidence);
+  const picked = checkCatch(ds, c, "2026-09-10", "main_body").warnings.find((w) => /18 in minimum/.test(w.text));
+  assert.equal(picked.text, "Under the 18 in minimum here");
 });

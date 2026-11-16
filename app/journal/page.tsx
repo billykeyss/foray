@@ -54,7 +54,7 @@ export default function JournalPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const { spots: savedSpots, remove: removeSpot } = useSavedSpots();
   const [formKind, setFormKind] = useState<"find" | "catch">("find");
-  const EMPTY_CATCH: CatchForm = { waterSlug: "", species: "", length: "", kept: false };
+  const EMPTY_CATCH: CatchForm = { waterSlug: "", species: "", length: "", kept: false, reachId: "" };
   const [catchForm, setCatchForm] = useState<CatchForm>(EMPTY_CATCH);
 
   // Seed form values when opened
@@ -65,7 +65,7 @@ export default function JournalPage() {
       const c = editingEntry.catch;
       setCatchForm(
         c
-          ? { waterSlug: c.waterSlug ?? "", species: c.species ?? "", length: c.length_in != null ? String(c.length_in) : "", kept: c.kept }
+          ? { waterSlug: c.waterSlug ?? "", species: c.species ?? "", length: c.length_in != null ? String(c.length_in) : "", kept: c.kept, reachId: c.reachId ?? "" }
           : EMPTY_CATCH,
       );
       setSpecies(editingEntry.species);
@@ -164,6 +164,7 @@ export default function JournalPage() {
       species: catchSpecies || undefined,
       length_in: lenNum != null && Number.isFinite(lenNum) ? lenNum : undefined,
       kept: catchForm.kept,
+      reachId: catchForm.reachId || undefined,
     };
     const waterName = FISH_WATERS.find((w) => w.slug === catchForm.waterSlug)?.name ?? "Unnamed water";
 

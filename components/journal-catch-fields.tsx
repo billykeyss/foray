@@ -13,6 +13,8 @@ export interface CatchForm {
   species: string;
   length: string;
   kept: boolean;
+  /** Optional reach key; empty = not sure. */
+  reachId: string;
 }
 
 const BY_SLUG = new Map(FISH_WATERS.map((w) => [w.slug, w]));
@@ -60,8 +62,8 @@ export default function JournalCatchFields({
 
   const len = value.length.trim() === "" ? undefined : Number(value.length);
   const check = useMemo(
-    () => (ds ? checkCatch(ds, { species: value.species, length_in: len, kept: value.kept }, date) : null),
-    [ds, value.species, len, value.kept, date],
+    () => (ds ? checkCatch(ds, { species: value.species, length_in: len, kept: value.kept }, date, value.reachId || null) : null),
+    [ds, value.species, len, value.kept, date, value.reachId],
   );
 
   return (
@@ -72,7 +74,7 @@ export default function JournalCatchFields({
           <span style={{ flex: 1, fontSize: 16 }}>
             {water.name} <small style={{ display: "inline", marginLeft: 4 }}>{water.states.join("/")}</small>
           </span>
-          <button type="button" onClick={() => onChange({ waterSlug: "" })}>
+          <button type="button" onClick={() => onChange({ waterSlug: "", reachId: "" })}>
             Change
           </button>
         </div>
@@ -124,12 +126,26 @@ export default function JournalCatchFields({
         </div>
       </div>
 
+      {ds && ds.reaches.length > 0 && (
+        <>
+          <label htmlFor="catch-reach">Section (optional)</label>
+          <select id="catch-reach" value={value.reachId} onChange={(e) => onChange({ reachId: e.target.value })} className="kp-catch-select">
+            <option value="">Not sure</option>
+            {ds.reaches.map((r) => (
+              <option key={r.key} value={r.key}>
+                {r.name ?? r.key}
+              </option>
+            ))}
+          </select>
+        </>
+      )}
+
       {state === "not-cached" && <div className="kp-catch-note">Rules not downloaded. Size checks skipped; you can still save.</div>}
       {state === "error" && <div className="kp-catch-note">Couldn’t load rules. Size checks skipped; you can still save.</div>}
       {check?.warnings.map((w, i) => (
         <div key={i} className="kp-warn" role="status">
           <div>{w.text}</div>
-          {(w.citation || w.sourceUrl) && (
+          {(w.citation || w.sourceUrl || w.confidence) && (
             <div className="kp-warn-cite">
               {w.citation}
               {w.sourceUrl && (
@@ -140,12 +156,12 @@ export default function JournalCatchFields({
                   </a>
                 </>
               )}
-              {check.confidence && ` · confidence ${check.confidence}`} · data as of {check.dataAsOf}
+              {w.confidence && ` · confidence ${w.confidence}`} · data as of {check.dataAsOf}
             </div>
           )}
         </div>
       ))}
-      {check && check.warnings.length > 0 && <div className="kp-catch-note">A hint, not legal advice. Check the current regulations.</div>}
+      {check && check.warnings.some((w) => w.citation) && <div className="kp-catch-note">A hint, not legal advice. Check the current regulations.</div>}
     </div>
   );
 }
