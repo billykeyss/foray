@@ -1329,6 +1329,15 @@
 .kp .kp-trip-license { margin: 0; padding: 6px 8px; border-radius: var(--kp-radius-tag); background: var(--kp-warn-bg); color: var(--kp-brass-ink); font: 500 12px/1.3 var(--kp-font-mono); }
 .kp .kp-trip-water-cite { display: block; font-size: 9.5px; color: var(--kp-ink-48); overflow-wrap: anywhere; }
 .kp .kp-trip-water-hours { display: block; font: 500 10.5px/1.3 var(--kp-font-mono); color: var(--kp-ink-64); }
+/* Phone peek: hours text clamps to 2 lines (full text is in the title/aria-label and the rules sheet). */
+@media (max-width: 1023px) {
+  .kp.kp-trip[data-expanded="false"] .kp-trip-water-hours > span:first-child {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
 .kp .kp-trip-pending { font: 500 12px var(--kp-font-mono); color: var(--kp-ink-48); }
 .kp .kp-trip-cta {
   display: flex;

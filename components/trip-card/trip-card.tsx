@@ -6,6 +6,9 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
  *  to keep the whole summary above the tab bar when it's taller, e.g. a two-line water name; expanded) toggled
  *  by the handle (tap, or a short vertical drag). Desktop (lg+): a scrollable left panel with the
  *  expanded content always shown. The tab bar (z-50) sits above the card, never under it. */
+/** Room kept above the phone peek for the map controls (they end ~316px down) plus a strip of map. */
+export const PEEK_TOP_RESERVE = 340;
+
 export default function TripCard({
   kicker,
   headline,
@@ -47,7 +50,8 @@ export default function TripCard({
     return () => mq.removeEventListener("change", on);
   }, []);
 
-  // Peek = max(46% of the viewport, what the summary needs to clear the tab bar).
+  // Peek = max(46% of the viewport, what the summary needs to clear the tab bar), but never so
+  // tall that it covers the map's control column (top 116px + 4×44px buttons) and the map itself.
   useLayoutEffect(() => {
     const root = document.documentElement;
     const measure = () => {
@@ -56,7 +60,8 @@ export default function TripCard({
       const padBottom = parseFloat(getComputedStyle(scroll).paddingBottom) || 0;
       // padBottom = tab bar + 16px breathing room under the CTA.
       const needed = (grabRef.current?.offsetHeight ?? 0) + (summaryRef.current?.offsetHeight ?? 0) + padBottom;
-      const px = Math.round(Math.max(window.innerHeight * 0.46, needed));
+      const vh = window.innerHeight;
+      const px = Math.round(Math.max(vh * 0.46, Math.min(needed, vh - PEEK_TOP_RESERVE)));
       root.style.setProperty("--kp-trip-peek", `${px}px`);
       peekCb.current?.(px);
     };
