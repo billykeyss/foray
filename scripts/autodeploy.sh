@@ -43,7 +43,7 @@ fi
 
 # foray-server.sh is a no-op if the tmux session is already up, so kill it
 # first to force the supervisor loop to pick up the new build.
-tmux kill-session -t foray 2>/dev/null || true
+tmux kill-session -t =foray 2>/dev/null || true
 "$REPO/scripts/foray-server.sh"
 
 for _ in $(seq 1 30); do

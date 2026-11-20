@@ -47,7 +47,7 @@ if ! command -v tmux >/dev/null; then
   exit 1
 fi
 
-if tmux has-session -t "$SESSION" 2>/dev/null; then
+if tmux has-session -t "=$SESSION" 2>/dev/null; then
   echo "foray-server: session '$SESSION' already running (tmux attach -t $SESSION)"
   exit 0
 fi
