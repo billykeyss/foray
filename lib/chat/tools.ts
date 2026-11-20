@@ -28,7 +28,7 @@ import type { WaterDataset } from "../fishing/types.ts";
 import { FINDABLE_PROFILES } from "../forage-find/catalog.ts";
 import { resolveFindTarget } from "../forage-find/profiles.ts";
 import { findForageSpots, DEFAULT_RADIUS_KM, RADII_KM, type FindDeps, type FindResult } from "../forage-find/run.ts";
-import { saveStoredFind } from "../forage-find/store.ts";
+import { saveStoredFind, shouldStoreFind } from "../forage-find/store.ts";
 
 export type CatalogKind = "mushroom" | "plant" | "ocean";
 
@@ -422,6 +422,8 @@ export interface ToolContext {
   findDeps?: FindDeps;
   /** Device-local YYYY-MM-DD; defaults to localIsoDate(). */
   today?: string;
+  /** The chat turn's abort signal: stopping the chat stops a running Forage Finder search. */
+  signal?: AbortSignal;
 }
 
 export interface StockingRow {
@@ -689,10 +691,19 @@ async function findForageSpotsTool(input: { species?: string; radiusKm?: number 
     radiusKm,
     today: ctx.today ?? localIsoDate(),
     deps,
+    signal: ctx.signal,
   });
+  if (result.status === "unavailable") throw new Error(`${result.message} Don't suggest spots from memory.`);
   // Opening "Show on map" (/?find=<id>) then shows this exact result instantly (and offline).
-  if (typeof localStorage !== "undefined") saveStoredFind(result);
-  return compactFind(result);
+  // Low-confidence results are never stored, so they can't replace the last good search.
+  if (typeof localStorage !== "undefined" && shouldStoreFind(result)) saveStoredFind(result);
+  return { out: compactFind(result), result };
+}
+
+/** The Ask card's data: the compact result plus each spot's raw reasons, so the card can format
+ *  rain / temperature / elevation in the user's units (the model gets metric text). */
+export function findCardData(out: ReturnType<typeof compactFind>, r: FindResult) {
+  return { ...out, spots: out.spots.map((s, i) => ({ ...s, reasons: r.spots[i]?.reasons.filter((x) => x.good) ?? [] })) };
 }
 
 function readJournalTool(input: { limit?: number }): unknown[] {
@@ -795,8 +806,8 @@ export async function executeTool(
       return capJson(spots);
     }
     case "find_forage_spots": {
-      const out = await findForageSpotsTool(input as { species?: string; radiusKm?: number }, ctx);
-      onCard({ tool: "find_forage_spots", data: out });
+      const { out, result } = await findForageSpotsTool(input as { species?: string; radiusKm?: number }, ctx);
+      onCard({ tool: "find_forage_spots", data: findCardData(out, result) });
       return capJson(out);
     }
     case "read_journal": {

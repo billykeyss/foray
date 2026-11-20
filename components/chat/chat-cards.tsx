@@ -6,6 +6,9 @@ import type { ChatCard } from "@/lib/chat/store.ts";
 import { safeHref } from "@/lib/chat/text.ts";
 import { speciesRoute } from "@/lib/chat/species-route.ts";
 import DocLink from "@/components/doc-link";
+import { useUnits } from "@/lib/units-context";
+import { fmtElev, reasonText, unitSystemFor } from "@/lib/forage-find/format.ts";
+import type { Reason } from "@/lib/forage-find/score.ts";
 
 /** Persisted card data can outlive schema changes; one bad card must not
  * blank the whole chat. Class component because error boundaries can't be
@@ -184,16 +187,26 @@ function SpotsCard({ data }: { data: Spot[] }) {
 
 interface FindCardData {
   species: { id: string; name: string };
-  status: "ok" | "poor" | "out-of-season";
+  status: "ok" | "poor" | "low-confidence" | "unavailable" | "out-of-season";
   message: string;
   radiusKm: number;
-  spots: { rank: number; label: string; score: number; elevationM: number | null; why: string[] }[];
+  spots: {
+    rank: number;
+    label: string;
+    score: number;
+    elevationM: number | null;
+    why: string[];
+    /** Raw good reasons (with values) for unit formatting; absent on older cards. */
+    reasons?: Pick<Reason, "text" | "q">[];
+  }[];
   inSeasonNow: { id: string; name: string }[];
   cautions: string[];
   mapLink: string;
 }
 
 function FindCard({ data }: { data: FindCardData }) {
+  const { elevation } = useUnits();
+  const u = unitSystemFor(elevation);
   const mapHref = `/?find=${encodeURIComponent(data.species.id)}`;
   return (
     <Shell title={`Find spots · ${data.species.name} · ${data.radiusKm} km`}>
@@ -217,13 +230,13 @@ function FindCard({ data }: { data: FindCardData }) {
               {s.elevationM != null && (
                 <span className="font-mono text-xs" style={{ color: "var(--ink-soft)" }}>
                   {" "}
-                  · {s.elevationM.toLocaleString("en-US")} m
+                  · {fmtElev(s.elevationM, u)}
                 </span>
               )}
             </span>
             {s.why.length > 0 && (
               <span className="block text-xs" style={{ color: "var(--ink-soft)" }}>
-                {s.why.slice(0, 4).join(" · ")}
+                {(s.reasons?.length ? s.reasons.map((r) => reasonText(r, u)) : s.why).slice(0, 4).join(" · ")}
               </span>
             )}
           </span>
@@ -232,15 +245,17 @@ function FindCard({ data }: { data: FindCardData }) {
           </span>
         </div>
       ))}
-      {data.status !== "ok" && data.inSeasonNow.length > 0 && (
+      {(data.status === "poor" || data.status === "out-of-season") && data.inSeasonNow.length > 0 && (
         <div className="mt-1 text-xs" style={{ color: "var(--ink-soft)" }}>
           In season now: {data.inSeasonNow.map((s) => s.name).join(", ")}
         </div>
       )}
-      {data.cautions[0] && (
-        <div className="mt-2 text-xs font-semibold" style={{ color: "var(--ink)" }}>
-          {data.cautions[0]}
-        </div>
+      {data.cautions.length > 0 && (
+        <ul className="mt-2 space-y-1 text-xs font-semibold" style={{ color: "var(--ink)" }}>
+          {data.cautions.map((c) => (
+            <li key={c}>{c}</li>
+          ))}
+        </ul>
       )}
       {data.spots.length > 0 && (
         <DocLink href={mapHref} className="mt-2 inline-block font-mono text-[11px] uppercase tracking-widest underline" style={{ color: "var(--rust)" }}>
