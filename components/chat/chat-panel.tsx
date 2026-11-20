@@ -39,6 +39,7 @@ const TOOL_LABEL: Record<string, string> = {
   get_species: "Reading the field guide…",
   get_weather: "Checking conditions…",
   find_spots: "Scoring nearby spots…",
+  find_forage_spots: "Scouting weather, terrain and trees…",
   read_journal: "Reading your journal…",
   web_search: "Searching the web…",
 };

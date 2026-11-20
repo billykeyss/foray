@@ -192,13 +192,14 @@ test("saveSessions swallows quota errors instead of throwing", () => {
   }
 });
 
-test("tool schemas: eight client tools, unique names, frozen order", () => {
+test("tool schemas: nine client tools, unique names, frozen order", () => {
   const names = TOOL_SCHEMAS.map((t) => t.name);
   assert.deepEqual(names, [
     "search_catalog",
     "get_species",
     "get_weather",
     "find_spots",
+    "find_forage_spots",
     "read_journal",
     "find_waters",
     "get_water_rules",
