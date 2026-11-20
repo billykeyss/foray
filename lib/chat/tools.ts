@@ -25,6 +25,10 @@ import { resolveDataset, STATUS_LABEL } from "../fishing/resolve.ts";
 import { isValidIsoDate } from "../fishing/engine/index.ts";
 import { localIsoDate } from "../fishing/local-date.ts";
 import type { WaterDataset } from "../fishing/types.ts";
+import { FINDABLE_PROFILES } from "../forage-find/catalog.ts";
+import { resolveFindTarget } from "../forage-find/profiles.ts";
+import { findForageSpots, DEFAULT_RADIUS_KM, RADII_KM, type FindDeps, type FindResult } from "../forage-find/run.ts";
+import { saveStoredFind, shouldStoreFind } from "../forage-find/store.ts";
 
 export type CatalogKind = "mushroom" | "plant" | "ocean";
 
@@ -106,7 +110,7 @@ export const TOOL_SCHEMAS = [
   {
     name: "find_spots",
     description:
-      "Score nearby known foraging spots by current weather (Spore Score). Use for 'where should I go' questions. Requires the user's location.",
+      "Score nearby known foraging spots by current weather (Spore Score). Use for general 'where should I go' questions with no particular species; for a named species use find_forage_spots. Requires the user's location.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -114,6 +118,19 @@ export const TOOL_SCHEMAS = [
         max: { type: "number", description: "Max spots, default 6, cap 10" },
       },
       required: [],
+    },
+  },
+  {
+    name: "find_forage_spots",
+    description:
+      "Forage Finder: rank real ground near the user's location for ONE edible mushroom species by the past week's rain/soil moisture/soil temperature, terrain (drainages, slope aspect, elevation), LANDFIRE tree cover and burn scars. Use for 'where can I find <species>' / 'where should I look for morels' questions. Returns up to 5 numbered spots with coordinates, a 0-100 habitat score and plain reasons, or an out-of-season / poor-odds message with species that are in season now. Only edible species are searchable. Requires the user's location.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        species: { type: "string", description: "Common name, scientific name or catalog id, e.g. 'morels', 'king bolete', 'boletus-edulis'" },
+        radiusKm: { type: "number", enum: [15, 40, 80], description: "Search radius in km, default 40" },
+      },
+      required: ["species"],
     },
   },
   {
@@ -401,6 +418,12 @@ export interface ToolContext {
   loadWater?: (slug: string) => Promise<WaterDataset>;
   /** Injectable for node tests; defaults to fetching /fishing/stocking-recent.json. */
   loadStocking?: () => Promise<StockingRow[]>;
+  /** Injectable for node tests; defaults to the browser's network (Open-Meteo, terrain tiles, LANDFIRE, burns). */
+  findDeps?: FindDeps;
+  /** Device-local YYYY-MM-DD; defaults to localIsoDate(). */
+  today?: string;
+  /** The chat turn's abort signal: stopping the chat stops a running Forage Finder search. */
+  signal?: AbortSignal;
 }
 
 export interface StockingRow {
@@ -620,6 +643,69 @@ async function findSpotsTool(
     }));
 }
 
+/** The chat-facing shape of a Forage Finder result: compact, no long reason objects. */
+export function compactFind(r: FindResult) {
+  return {
+    species: { id: r.speciesId, name: r.speciesName, scientific: r.scientific },
+    status: r.status,
+    message: r.message,
+    season: r.season,
+    searchCenter: r.center,
+    radiusKm: r.radiusKm,
+    conditionsAtCenter: r.conditions,
+    spots: r.spots.map((s) => ({
+      rank: s.rank,
+      label: s.label,
+      lat: s.lat,
+      lon: s.lon,
+      score: s.score,
+      elevationM: s.elevationM,
+      why: s.reasons.filter((x) => x.good).map((x) => x.text),
+      against: s.reasons.filter((x) => !x.good).map((x) => x.text),
+      cautions: s.cautions,
+    })),
+    inSeasonNow: r.inSeasonNow,
+    notes: r.notes,
+    cautions: r.cautions,
+    mapLink: `/?find=${r.speciesId}`,
+  };
+}
+
+async function findForageSpotsTool(input: { species?: string; radiusKm?: number }, ctx: ToolContext) {
+  const profile = resolveFindTarget(String(input.species ?? ""), FINDABLE_PROFILES);
+  if (!profile) {
+    throw new Error(
+      `"${input.species}" isn't a findable species. Forage Finder only searches edible species in Foray's catalog (search_catalog with edibility "edible" lists them); it never searches for toxic or deadly ones.`,
+    );
+  }
+  if (ctx.lat == null || ctx.lon == null) {
+    throw new Error("The user has no location set — ask them to pick one on the map first.");
+  }
+  const radiusKm = (RADII_KM as readonly number[]).includes(Number(input.radiusKm)) ? Number(input.radiusKm) : DEFAULT_RADIUS_KM;
+  let deps = ctx.findDeps;
+  if (!deps) deps = (await import("../forage-find/browser.ts")).browserFindDeps();
+  const result = await findForageSpots({
+    profile,
+    allProfiles: FINDABLE_PROFILES,
+    center: { lat: ctx.lat, lon: ctx.lon, label: ctx.locationLabel || undefined },
+    radiusKm,
+    today: ctx.today ?? localIsoDate(),
+    deps,
+    signal: ctx.signal,
+  });
+  if (result.status === "unavailable") throw new Error(`${result.message} Don't suggest spots from memory.`);
+  // Opening "Show on map" (/?find=<id>) then shows this exact result instantly (and offline).
+  // Low-confidence results are never stored, so they can't replace the last good search.
+  if (typeof localStorage !== "undefined" && shouldStoreFind(result)) saveStoredFind(result);
+  return { out: compactFind(result), result };
+}
+
+/** The Ask card's data: the compact result plus each spot's raw reasons, so the card can format
+ *  rain / temperature / elevation in the user's units (the model gets metric text). */
+export function findCardData(out: ReturnType<typeof compactFind>, r: FindResult) {
+  return { ...out, spots: out.spots.map((s, i) => ({ ...s, reasons: r.spots[i]?.reasons.filter((x) => x.good) ?? [] })) };
+}
+
 function readJournalTool(input: { limit?: number }): unknown[] {
   if (typeof localStorage === "undefined") return [];
   try {
@@ -718,6 +804,11 @@ export async function executeTool(
       const spots = await findSpotsTool(input as { maxKm?: number; max?: number }, ctx);
       onCard({ tool: "find_spots", data: spots });
       return capJson(spots);
+    }
+    case "find_forage_spots": {
+      const { out, result } = await findForageSpotsTool(input as { species?: string; radiusKm?: number }, ctx);
+      onCard({ tool: "find_forage_spots", data: findCardData(out, result) });
+      return capJson(out);
     }
     case "read_journal": {
       const entries = readJournalTool(input as { limit?: number });

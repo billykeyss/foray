@@ -9,6 +9,7 @@ import {
 } from "./weather.ts";
 import { PNW_CATALOG } from "./species-catalog.ts";
 import { speciesInRegions } from "./weather.ts";
+import { SPOT_PRESETS } from "./forage-find/places.ts";
 
 export interface CandidateSpot {
   name: string;
@@ -33,26 +34,8 @@ export interface RankedSpot {
   cautions?: string;
 }
 
-// Reno-anchored preset spots — copied from LocationChooser so the spot
-// finder doesn't depend on UI imports.
-const PRESETS: { name: string; lat: number; lon: number; group: string }[] = [
-  { name: "Tahoe Meadows", lat: 39.312, lon: -119.896, group: "Near Reno" },
-  { name: "Galena Creek", lat: 39.362, lon: -119.837, group: "Near Reno" },
-  { name: "Spooner Summit", lat: 39.106, lon: -119.912, group: "Near Reno" },
-  { name: "Mt. Rose Wilderness", lat: 39.343, lon: -119.916, group: "Near Reno" },
-  { name: "Truckee", lat: 39.328, lon: -120.183, group: "Tahoe Basin" },
-  { name: "Donner Summit", lat: 39.315, lon: -120.336, group: "Tahoe Basin" },
-  { name: "Tahoe West Shore", lat: 39.097, lon: -120.123, group: "Tahoe Basin" },
-  { name: "Echo Summit", lat: 38.812, lon: -120.034, group: "Tahoe Basin" },
-  { name: "Sierra City / Yuba", lat: 39.567, lon: -120.629, group: "Day drives" },
-  { name: "Carson Pass", lat: 38.694, lon: -119.986, group: "Day drives" },
-  { name: "Ebbetts Pass", lat: 38.545, lon: -119.812, group: "Day drives" },
-  { name: "Plumas NF · Quincy", lat: 39.937, lon: -120.947, group: "Day drives" },
-  { name: "Lassen NF", lat: 40.487, lon: -121.407, group: "Day drives" },
-  { name: "Eastern Sierra · June Lake", lat: 37.779, lon: -119.073, group: "Weekend trips" },
-  { name: "Sonora Pass", lat: 38.328, lon: -119.636, group: "Weekend trips" },
-  { name: "Lamoille Canyon · Ruby Mtns", lat: 40.652, lon: -115.472, group: "Weekend trips" },
-];
+// Reno-anchored preset spots, shared with Forage Finder's place labels.
+const PRESETS = SPOT_PRESETS;
 
 const EARTH_R_KM = 6371;
 function haversineKm(

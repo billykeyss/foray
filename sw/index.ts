@@ -20,10 +20,10 @@ const serwist = new Serwist({
   precacheOptions: {
     cleanupOutdatedCaches: true,
     // Static pages read their target from the query string (/fish/water?w=<slug>[&on=<date>],
-    // /?spot=<slug>, saved-spot links /?lat=<lat>&lon=<lon>), so these params must not defeat the
+    // /?spot=<slug>, saved-spot links /?lat=<lat>&lon=<lon>, Forage Finder /?find=<species id>), so these params must not defeat the
     // precache match when offline. Serwist's default only ignores utm_* and fbclid. Any new
     // same-origin link with a query param belongs here (scripts/check-sw-fishing.test.mjs checks).
-    ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^w$/, /^spot$/, /^on$/, /^lat$/, /^lon$/],
+    ignoreURLParametersMatching: [/^utm_/, /^fbclid$/, /^w$/, /^spot$/, /^on$/, /^lat$/, /^lon$/, /^find$/],
   },
   runtimeCaching: [
     {
@@ -93,6 +93,19 @@ const serwist = new Serwist({
         plugins: [
           // Three styles + the overlay share this cap.
           new ExpirationPlugin({ maxEntries: 1500, maxAgeSeconds: 60 * 60 * 24 * 30, purgeOnQuotaError: true }),
+        ],
+      }),
+    },
+    {
+      // Forage Finder's tree-cover lookups (LANDFIRE WMS GetFeatureInfo, one per candidate spot).
+      // Must precede the foray-forest matcher (same host). Fresh when online, last answer offline.
+      matcher: ({ url }) =>
+        url.hostname === "edcintl.cr.usgs.gov" && /^GetFeatureInfo$/i.test(url.searchParams.get("request") ?? ""),
+      handler: new NetworkFirst({
+        cacheName: "foray-landcover",
+        networkTimeoutSeconds: 8,
+        plugins: [
+          new ExpirationPlugin({ maxEntries: 300, maxAgeSeconds: 60 * 60 * 24 * 7, purgeOnQuotaError: true }),
         ],
       }),
     },

@@ -10,6 +10,8 @@ import { TREES_BY_SCIENTIFIC } from "@/lib/tree-catalog";
 import PhotoGallery from "@/components/photo-gallery";
 import LookalikeCard from "@/components/lookalike-card";
 import { SPECIES_GALLERY } from "@/lib/species-gallery";
+import DocLink from "@/components/doc-link";
+import { FINDABLE_IDS } from "@/lib/forage-find/catalog.ts";
 
 const SPECIES_KIND_LABEL: Record<string, string> = {
   whole: "Whole",
@@ -163,6 +165,26 @@ export default async function SpeciesDetail({
         peak={s.peakMonths}
         currentMonth={new Date().getMonth() + 1}
       />
+
+      {FINDABLE_IDS.has(s.id) && (
+        <DocLink
+          href={`/?find=${s.id}`}
+          className="font-mono mt-5 inline-flex items-center gap-2"
+          style={{
+            minHeight: 44,
+            padding: "0 16px",
+            borderRadius: 999,
+            background: "var(--moss)",
+            color: "var(--parchment)",
+            fontSize: 11,
+            letterSpacing: "0.18em",
+            textTransform: "uppercase",
+            textDecoration: "none",
+          }}
+        >
+          Find spots near me →
+        </DocLink>
+      )}
 
       <TasteSmellCallout
         odor={s.identification.odor}

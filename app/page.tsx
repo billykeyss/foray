@@ -23,6 +23,15 @@ import { nearestWaters } from "@/lib/fishing/nearby.ts";
 import { defaultSpotKind, useSavedSpots, type SpotKind } from "@/lib/saved-spots.ts";
 import { useLocalToday } from "@/lib/use-local-today.ts";
 import { NO_OVERLAYS } from "@/components/field-map/layers.ts";
+import type { FieldMapProps } from "@/components/field-map/field-map.tsx";
+import FindSheet, { type PickerItem } from "@/components/forage-find/find-sheet";
+import { FINDABLE_IDS, FINDABLE_PROFILES } from "@/lib/forage-find/catalog.ts";
+import { inSeasonNow, monthsText, seasonStatus } from "@/lib/forage-find/profiles.ts";
+import { DEFAULT_RADIUS_KM, RADII_KM, type FindResult, type FoundSpot } from "@/lib/forage-find/run.ts";
+import { useForageFind } from "@/lib/forage-find/use-forage-find.ts";
+import { reasonText, unitSystemFor } from "@/lib/forage-find/format.ts";
+import { haversineKm } from "@/lib/forage-find/geo.ts";
+import { JOURNAL_DRAFT_KEY } from "@/lib/journal-draft.ts";
 
 const FieldMap = dynamic(() => import("@/components/field-map/field-map.tsx"), {
   ssr: false,
@@ -39,9 +48,16 @@ const FieldMap = dynamic(() => import("@/components/field-map/field-map.tsx"), {
 function searchSpecies(q: string): SpeciesHit[] {
   return searchCatalog({ query: q, limit: 5 }).flatMap((h) => {
     const route = speciesRoute(h.id);
-    return route ? [{ id: h.id, common: h.common, scientific: h.scientific, href: route.href }] : [];
+    return route ? [{ id: h.id, common: h.common, scientific: h.scientific, href: route.href, findable: FINDABLE_IDS.has(h.id) }] : [];
   });
 }
+
+const PROFILE_BY_ID = new Map(FINDABLE_PROFILES.map((p) => [p.id, p]));
+const STATUS_RANK = { peak: 0, in: 1, out: 2 } as const;
+/** Phone peek of the Find sheet (matches --kp-find-peek in keeper.css). */
+const FIND_PEEK = 0.52;
+/** A stored result this fresh is shown as-is instead of re-running (e.g. straight from Ask). */
+const FIND_REUSE_MS = 60 * 60 * 1000;
 
 const WATER_BY_SLUG = new Map(FISH_WATERS.map((w) => [w.slug, w]));
 const SAFE_TO_SUGGEST = new Set(["choice", "edible", "edible-with-caution", "edible-when-cooked"]);
@@ -78,6 +94,13 @@ function nextRain(weather: DailyWeather[], today: string): string {
   return day.time === today ? "rain today" : `rain ${dayjs(day.time).format("ddd")}`;
 }
 
+function setFindParam(id: string | null) {
+  const url = new URL(window.location.href);
+  if (id) url.searchParams.set("find", id);
+  else url.searchParams.delete("find");
+  window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+}
+
 function setSpotParam(slug: string | null) {
   const url = new URL(window.location.href);
   if (slug) url.searchParams.set("spot", slug);
@@ -106,6 +129,13 @@ export default function HomePage() {
   /** The card over the map: a freshly dropped pin (offers Save) or a tapped saved spot (offers Remove). */
   const [pinCard, setPinCard] = useState<{ type: "pin"; lon: number; lat: number } | { type: "saved"; id: string } | null>(null);
   const [peekPx, setPeekPx] = useState<number | null>(null);
+  // Forage Finder: the Find sheet replaces the trip card while open.
+  const [find, setFind] = useState<{ id: string | null; radiusKm: number } | null>(null);
+  const [findExpanded, setFindExpanded] = useState(false);
+  const [findSel, setFindSel] = useState<number | null>(null);
+  const [camera, setCamera] = useState<FieldMapProps["camera"]>(null);
+  const finder = useForageFind(FINDABLE_PROFILES, todayIso);
+  const month = Number(todayIso.slice(5, 7));
 
   // The map home doesn't scroll; the card scrolls inside itself.
   useEffect(() => {
@@ -117,23 +147,36 @@ export default function HomePage() {
     };
   }, []);
 
+  const { reset: resetFind } = finder;
   const openWater = useCallback((slug: string) => {
     const w = WATER_BY_SLUG.get(slug);
     if (!w) return;
+    // The rules sheet and the Find sheet are mutually exclusive (and so are ?spot= and ?find=).
+    setFind(null);
+    setFindSel(null);
+    resetFind();
+    setFindParam(null);
     setSpotlight(null);
     setSheetSlug(slug);
     setFocus([w.lon, w.lat]);
     setSpotParam(slug);
-  }, []);
+  }, [resetFind]);
 
-  // Deep link: /?spot=<slug> opens that water's rules. Unknown slugs are ignored.
+  // Deep link: /?spot=<slug> opens that water's rules, /?find=<species id> the Find sheet. Unknown ids are ignored.
   useEffect(() => {
     const qs = new URLSearchParams(window.location.search);
     const fLat = Number(qs.get("lat"));
     const fLon = Number(qs.get("lon"));
     if (qs.has("lat") && qs.has("lon") && Number.isFinite(fLat) && Number.isFinite(fLon)) setFocus([fLon, fLat]);
+    // Both ?spot= and ?find= (an old link): the Find sheet wins and ?spot= is dropped.
+    const fid = qs.get("find");
+    const findOk = !!fid && FINDABLE_IDS.has(fid);
+    if (fid && !findOk) setFindParam(null);
     const slug = qs.get("spot");
-    if (slug && WATER_BY_SLUG.has(slug)) openWater(slug);
+    if (findOk) {
+      if (slug) setSpotParam(null);
+      setFind({ id: fid, radiusKm: DEFAULT_RADIUS_KM });
+    } else if (slug && WATER_BY_SLUG.has(slug)) openWater(slug);
     else if (slug) setSpotParam(null);
   }, [openWater]);
 
@@ -154,6 +197,110 @@ export default function HomePage() {
         : [],
     [reading, filterTerms],
   );
+  const pickerItems = useMemo<PickerItem[]>(
+    () =>
+      FINDABLE_PROFILES.map((p) => ({
+        id: p.id,
+        name: p.name,
+        scientific: p.scientific,
+        months: monthsText(p.months),
+        status: seasonStatus(p, month),
+        west: p.westRelevant,
+      }))
+        .sort((a, b) => STATUS_RANK[a.status] - STATUS_RANK[b.status] || Number(b.west) - Number(a.west) || a.name.localeCompare(b.name))
+        .map(({ west: _w, ...rest }) => rest),
+    [month],
+  );
+
+  const openFind = useCallback(
+    (id?: string | null) => {
+      const fallback =
+        picks.find((p) => FINDABLE_IDS.has(p.id))?.id ?? inSeasonNow(FINDABLE_PROFILES, month, 1)[0]?.id ?? null;
+      const next = id && FINDABLE_IDS.has(id) ? id : fallback;
+      setSearchOpen(false);
+      setPinCard(null);
+      setSheetSlug(null);
+      setSpotlight(null);
+      setSpotParam(null);
+      setFindSel(null);
+      setFindExpanded(false);
+      setFind((f) => ({ id: next, radiusKm: f?.radiusKm ?? DEFAULT_RADIUS_KM }));
+      setFindParam(next);
+    },
+    [picks, month],
+  );
+  const closeFind = useCallback(() => {
+    setFind(null);
+    setFindSel(null);
+    finder.reset();
+    setFindParam(null);
+  }, [finder]);
+
+  // Run (or re-run) the search when the species, radius or location changes.
+  const findProfile = find?.id ? PROFILE_BY_ID.get(find.id) ?? null : null;
+  const { run: runFind, showStored } = finder;
+  const startFind = useCallback(
+    (allowStored: boolean) => {
+      if (!findProfile || lat == null || lon == null || !find) return;
+      const req = { profile: findProfile, center: { lat, lon, label: label || undefined }, radiusKm: find.radiusKm };
+      setFindSel(null);
+      if (allowStored && showStored(req, FIND_REUSE_MS)) return;
+      runFind(req);
+    },
+    [findProfile, lat, lon, label, find, runFind, showStored],
+  );
+  useEffect(() => {
+    startFind(true);
+  }, [findProfile?.id, find?.radiusKm, lat, lon]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const findResult: FindResult | null = finder.state.kind === "done" ? finder.state.result : null;
+  useEffect(() => {
+    if (!findResult?.spots.length) return;
+    let w = findResult.center.lon, e = w, s = findResult.center.lat, n = s;
+    for (const p of findResult.spots) {
+      w = Math.min(w, p.lon);
+      e = Math.max(e, p.lon);
+      s = Math.min(s, p.lat);
+      n = Math.max(n, p.lat);
+    }
+    setCamera({ key: `fit-${findResult.at}`, bounds: [[w, s], [e, n]] });
+  }, [findResult]);
+  const findPins = useMemo(() => (find && findResult ? findResult.spots.map((p) => ({ rank: p.rank, lat: p.lat, lon: p.lon })) : []), [find, findResult]);
+  const findCircle = useMemo(
+    () => (find && lat != null && lon != null ? { lat: findResult?.center.lat ?? lat, lon: findResult?.center.lon ?? lon, radiusKm: findResult?.radiusKm ?? find.radiusKm } : null),
+    [find, lat, lon, findResult],
+  );
+  const selectFindSpot = (rank: number, fromMap = false) => {
+    const sp = findResult?.spots.find((x) => x.rank === rank);
+    if (!sp) return;
+    setFindSel(rank);
+    if (fromMap) {
+      document.querySelector(`[data-find-rank="${rank}"]`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } else {
+      setCamera({ key: `sel-${rank}-${Date.now()}`, center: [sp.lon, sp.lat], zoom: 13.5 });
+      setFindExpanded(false);
+    }
+  };
+  const isFindSaved = (sp: FoundSpot) => savedSpots.some((x) => haversineKm(x, sp) < 0.03);
+  const saveFindSpot = (sp: FoundSpot, r: FindResult) => {
+    if (isFindSaved(sp)) return;
+    addSpot({ lon: sp.lon, lat: sp.lat, kind: "forage", label: `${r.speciesName} · ${sp.label}` });
+  };
+  const logFind = (sp: FoundSpot, r: FindResult) => {
+    try {
+      localStorage.setItem(
+        JOURNAL_DRAFT_KEY,
+        JSON.stringify({
+          species: r.speciesName,
+          lat: sp.lat,
+          lon: sp.lon,
+          notes: `Forage Finder spot ${sp.rank} (${sp.label}, score ${sp.score}): ${sp.reasons.filter((x) => x.good).map((x) => reasonText(x, unitSystemFor(elevUnit))).join("; ")}`,
+        }),
+      );
+    } catch {}
+    router.push("/journal");
+  };
+
   const fishRows = useNearbyFish(lat, lon);
   const hasLocation = lat != null && lon != null;
   // Fish clause only from settled rows: held back while any water loads; unloadable rows count as unknown.
@@ -181,8 +328,12 @@ export default function HomePage() {
     () =>
       isDesktop
         ? { right: sheetSlug ? 420 : 0 }
-        : { top: 110, bottom: peekPx ?? Math.round(vh * PEEK), right: sheetSlug && sheetBeside ? 420 : 0 },
-    [isDesktop, sheetBeside, sheetSlug, vh, peekPx],
+        : {
+            top: 110,
+            bottom: find ? Math.round(vh * FIND_PEEK) : (peekPx ?? Math.round(vh * PEEK)),
+            right: sheetSlug && sheetBeside ? 420 : 0,
+          },
+    [isDesktop, sheetBeside, sheetSlug, vh, peekPx, find],
   );
 
   const today = weather.find((d) => d.time === todayIso);
@@ -268,11 +419,45 @@ export default function HomePage() {
             setPinCard({ type: "pin", lon: lo, lat: la });
           }}
           padding={padding}
+          findPins={findPins}
+          findSelected={findSel}
+          findCircle={findCircle}
+          onFindPinTap={(rank) => selectFindSpot(rank, true)}
+          camera={camera}
         />
       </div>
 
       {!isDesktop && chipRow}
 
+      {find ? (
+        <FindSheet
+          species={pickerItems.find((p) => p.id === find.id) ?? null}
+          pickerItems={pickerItems}
+          radiusKm={find.radiusKm}
+          radii={RADII_KM}
+          onSpecies={(id) => {
+            setFind((f) => (f ? { ...f, id } : f));
+            setFindParam(id);
+          }}
+          onRadius={(km) => setFind((f) => (f ? { ...f, radiusKm: km } : f))}
+          state={finder.state}
+          hasLocation={hasLocation}
+          locationLabel={label || "your pin"}
+          onSetLocation={() => setChooserOpen(true)}
+          onCancel={finder.cancel}
+          onRetry={() => startFind(false)}
+          onClose={closeFind}
+          selectedRank={findSel}
+          onSelect={(rank) => selectFindSpot(rank)}
+          isSaved={isFindSaved}
+          onSave={saveFindSpot}
+          onLogFind={logFind}
+          elevUnit={elevUnit}
+          expanded={findExpanded}
+          onExpandedChange={setFindExpanded}
+          header={isDesktop ? chipRow : undefined}
+        />
+      ) : (
       <TripCard
         kicker={kicker}
         headline={headline}
@@ -281,7 +466,7 @@ export default function HomePage() {
         onPlan={planWithAI}
         onPeekChange={setPeekPx}
         header={isDesktop ? chipRow : undefined}
-        forage={<ForageHalf reading={reading} loading={loading} picks={picks} />}
+        forage={<ForageHalf reading={reading} loading={loading} picks={picks} onFind={() => openFind()} />}
         fish={
           <FishHalf
             rows={fishRows}
@@ -295,6 +480,7 @@ export default function HomePage() {
       >
         <TodayDetail reading={reading} />
       </TripCard>
+      )}
 
       {pinCard && (pinCard.type === "pin" || cardSpot) && (
         <div className="kp kp-pin-card" role="dialog" aria-label={pinCard.type === "pin" ? "Dropped pin" : "Saved spot"}>
@@ -339,6 +525,7 @@ export default function HomePage() {
             openWater(slug);
           }}
           onOpenSpecies={(hit) => router.push(hit.href)}
+          onFindSpecies={(hit) => openFind(hit.id)}
           onChangeLocation={() => {
             setSearchOpen(false);
             setChooserOpen(true);

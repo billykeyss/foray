@@ -59,7 +59,7 @@ test("out/sw.js precaches self-hosted map glyphs", (t) => {
 
 // Every query param the app puts on a same-origin navigation link must be ignored by the precache
 // lookup, or the page misses the precache offline and falls through to /~offline.
-const NAV_PARAMS = ["w", "spot", "on", "lat", "lon"];
+const NAV_PARAMS = ["w", "spot", "on", "lat", "lon", "find"];
 
 test("ignoreURLParametersMatching covers every app navigation param", () => {
   const m = src.match(/ignoreURLParametersMatching:\s*\[([^\]]*)\]/);
@@ -91,7 +91,7 @@ test("no same-origin link uses a query param the service worker doesn't ignore",
     }
     for (const [, k] of text.matchAll(/searchParams\.set\(\s*["']([a-zA-Z_]+)["']/g)) seen.add(k);
   }
-  for (const k of ["w", "spot", "lat", "lon"]) assert.ok(seen.has(k), `scan finds the known "${k}" link param`);
+  for (const k of ["w", "spot", "lat", "lon", "find"]) assert.ok(seen.has(k), `scan finds the known "${k}" link param`);
   for (const k of seen) assert.ok(NAV_PARAMS.includes(k), `link param "${k}" must be in ignoreURLParametersMatching`);
 });
 
@@ -128,4 +128,26 @@ test("query-string links use DocLink (full navigation), never next/link", async 
   };
   for (const d of ["app", "components"]) walk(path.join(ROOT, d));
   assert.deepEqual(bad, []);
+});
+
+test("Forage Finder: LANDFIRE GetFeatureInfo is NetworkFirst with a short expiry, ahead of foray-forest", () => {
+  const i = src.indexOf('cacheName: "foray-landcover"');
+  assert.ok(i > 0, "sw/index.ts declares foray-landcover");
+  const m = src.slice(src.lastIndexOf("matcher:", i), i);
+  assert.match(m, /edcintl\.cr\.usgs\.gov/);
+  assert.match(m, /GetFeatureInfo/);
+  assert.match(m, /new NetworkFirst/);
+  assert.ok(i < src.indexOf('cacheName: "foray-forest"'), "must precede the CacheFirst forest-tile matcher");
+  assert.match(block("foray-landcover"), /maxAgeSeconds: 60 \* 60 \* 24 \* 7/);
+  const finder = readFileSync(path.join(ROOT, "lib/forage-find/landcover.ts"), "utf8");
+  assert.match(finder, /https:\/\/edcintl\.cr\.usgs\.gov\/geoserver\/landfire\/wms/);
+  assert.match(finder, /GetFeatureInfo/);
+});
+
+test("Forage Finder sources are runtime-cached: Open-Meteo and terrarium tiles", () => {
+  const cond = readFileSync(path.join(ROOT, "lib/forage-find/conditions.ts"), "utf8");
+  assert.match(cond, /api\.open-meteo\.com/);
+  const terr = readFileSync(path.join(ROOT, "lib/forage-find/terrain.ts"), "utf8");
+  assert.match(terr, /s3\.amazonaws\.com\/elevation-tiles-prod\/terrarium/);
+  assert.ok(src.includes('url.hostname === "api.open-meteo.com"'));
 });

@@ -153,7 +153,7 @@ export async function runChatTurn(opts: {
           const out = await executeTool(
             t.name,
             (t.input ?? {}) as Record<string, unknown>,
-            toolContext,
+            { ...toolContext, signal },
             callbacks.onCard
           );
           return { type: "tool_result" as const, tool_use_id: t.id, content: out };

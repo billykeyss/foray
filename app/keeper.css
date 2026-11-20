@@ -1507,3 +1507,124 @@
 .kp .kp-license-row label { width: 84px; font: 500 12px var(--kp-font-mono); }
 .kp .kp-license-row input { flex: 1; min-width: 0; height: 38px; padding: 0 8px; border: var(--kp-hairline); border-radius: var(--kp-radius-tag); background: #fff; font: 14px var(--kp-font-body); color: var(--kp-ink); }
 .kp .kp-license-row button { height: 38px; padding: 0 10px; border: var(--kp-hairline); border-radius: var(--kp-radius-tag); background: none; font: 500 12px var(--kp-font-body); color: var(--kp-ink-64); cursor: pointer; }
+
+/* Forage Finder: the Find sheet takes the trip card's place (phone bottom sheet, desktop left panel). */
+.kp.kp-trip.kp-find {
+  z-index: 46;
+  transform: translateY(calc(100dvh - var(--kp-trip-top) - var(--kp-find-peek, 52dvh)));
+}
+.kp.kp-trip.kp-find[data-expanded="true"] { transform: none; }
+.kp.kp-find .kp-find-scroll { overflow-y: auto; }
+.kp .kp-find-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
+.kp .kp-find-head .kp-trip-kicker { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kp .kp-find-close {
+  flex: none; width: 36px; height: 36px; border: var(--kp-hairline); border-radius: 50%;
+  background: var(--kp-bone-2); color: var(--kp-ink); font-size: 20px; line-height: 1; cursor: pointer;
+}
+.kp .kp-find-controls { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
+.kp .kp-find-species {
+  flex: 1 1 180px; min-width: 0; min-height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 12px;
+  border: 1px solid var(--kp-ink-14); border-radius: 12px; background: var(--kp-bone-2); color: var(--kp-ink);
+  font: 600 16px var(--kp-font-display); text-align: left; cursor: pointer;
+}
+.kp .kp-find-species-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kp .kp-find-radius { display: flex; border: var(--kp-hairline); border-radius: 12px; overflow: hidden; flex: none; }
+.kp .kp-find-radius button {
+  min-height: 44px; padding: 0 11px; border: 0; border-left: var(--kp-hairline); background: var(--kp-bone-2);
+  font: 500 12.5px var(--kp-font-mono); color: var(--kp-ink); cursor: pointer;
+}
+.kp .kp-find-radius button:first-child { border-left: 0; }
+.kp .kp-find-radius button[aria-pressed="true"] { background: var(--kp-ink); color: var(--kp-bone); }
+.kp .kp-find-cond { display: grid; grid-template-columns: repeat(3, minmax(0, 0.8fr)) minmax(0, 1.3fr); gap: 1px; background: var(--kp-ink-12); border: 1px solid var(--kp-ink-12); border-radius: 12px; overflow: hidden; }
+.kp .kp-find-cond-cell { display: flex; flex-direction: column; gap: 2px; padding: 7px 9px; background: var(--kp-bone-2); min-width: 0; }
+.kp .kp-find-cond-k { font: 500 9.5px var(--kp-font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--kp-ink-64); }
+.kp .kp-find-cond-v { font: 600 14px/1.2 var(--kp-font-body); color: var(--kp-ink); overflow-wrap: anywhere; }
+.kp .kp-find-cond-season[data-status="peak"] .kp-find-cond-v { color: var(--kp-amber-ink); }
+.kp .kp-find-cond-season[data-status="out"] .kp-find-cond-v { color: var(--kp-brass-ink); font-size: 12.5px; }
+.kp .kp-find-progress { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; padding: 10px 12px; border: 1px dashed var(--kp-ink-14); border-radius: 12px; }
+.kp .kp-find-progress ol { display: flex; gap: 14px; margin: 0; padding: 0; list-style: none; font: 500 12.5px var(--kp-font-mono); }
+.kp .kp-find-progress li { display: inline-flex; align-items: center; gap: 6px; color: var(--kp-ink-48); }
+.kp .kp-find-progress li[data-state="done"] { color: var(--kp-ink-64); }
+.kp .kp-find-progress li[data-state="active"] { color: var(--kp-amber-ink); font-weight: 600; }
+.kp .kp-find-step-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; opacity: 0.5; }
+.kp .kp-find-progress li[data-state="active"] .kp-find-step-dot { opacity: 1; animation: kp-find-pulse 1s ease-in-out infinite alternate; }
+@keyframes kp-find-pulse { from { transform: scale(0.7); } to { transform: scale(1.3); } }
+.kp .kp-find-btn {
+  flex: none; min-height: 40px; padding: 0 14px; border: var(--kp-hairline); border-radius: 999px;
+  background: var(--kp-bone-2); color: var(--kp-ink); font: 600 13.5px var(--kp-font-body); cursor: pointer;
+}
+.kp .kp-find-btn--primary { background: var(--kp-warden); border-color: var(--kp-warden); color: var(--kp-bone); }
+.kp .kp-find-empty-state { margin-top: 14px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.kp .kp-find-empty-state p { margin: 0; font-size: 14px; line-height: 1.4; }
+.kp .kp-find-msg { margin: 12px 0 4px; font: 500 15px/1.4 var(--kp-font-body); color: var(--kp-ink); }
+.kp .kp-find-msg[data-status="out-of-season"], .kp .kp-find-msg[data-status="poor"], .kp .kp-find-msg[data-status="low-confidence"], .kp .kp-find-msg[data-status="unavailable"] { padding: 9px 12px; border-left: 3px solid var(--kp-brass); border-radius: 8px; background: var(--kp-warn-bg); }
+.kp .kp-find-season { margin: 8px 0 4px; }
+.kp .kp-find-season-h { display: block; margin-bottom: 6px; font: 500 11px var(--kp-font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--kp-ink-64); }
+.kp .kp-find-season ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.kp .kp-find-pill {
+  min-height: 36px; padding: 0 12px; border: 1px solid color-mix(in srgb, var(--kp-amber) 60%, transparent); border-radius: 999px;
+  background: color-mix(in srgb, var(--kp-amber) 14%, var(--kp-bone)); color: var(--kp-ink); font: 600 13px var(--kp-font-body); cursor: pointer;
+}
+.kp .kp-find-pill-peak { font-weight: 500; color: var(--kp-amber-ink); }
+.kp .kp-find-list { list-style: none; margin: 8px 0 0; padding: 0; }
+.kp .kp-find-row { padding: 10px 0 12px; border-top: 1px solid var(--kp-ink-12); }
+.kp .kp-find-row[data-selected="true"] { background: linear-gradient(90deg, color-mix(in srgb, var(--kp-amber) 12%, transparent), transparent 70%); }
+.kp .kp-find-row-main { display: flex; gap: 10px; width: 100%; align-items: flex-start; border: 0; background: none; padding: 0; text-align: left; color: var(--kp-ink); cursor: pointer; }
+.kp .kp-find-badge {
+  flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--kp-amber); color: var(--kp-ink); border: 2px solid var(--kp-bone); box-shadow: 0 0 0 1px var(--kp-ink-14);
+  font: 700 13px var(--kp-font-body);
+}
+.kp .kp-find-row[data-selected="true"] .kp-find-badge { box-shadow: 0 0 0 2px var(--kp-ink); }
+.kp .kp-find-row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.kp .kp-find-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.kp .kp-find-row-label { font: 600 16px/1.2 var(--kp-font-display); }
+.kp .kp-find-score { flex: none; font: 600 20px/1 var(--kp-font-display); color: var(--kp-amber-ink); }
+.kp .kp-find-row-meta { display: flex; align-items: center; gap: 10px; font: 500 11px var(--kp-font-mono); color: var(--kp-ink-64); }
+.kp .kp-find-bar { flex: 1; height: 5px; border-radius: 3px; background: var(--kp-ink-08); overflow: hidden; max-width: 160px; }
+.kp .kp-find-bar span { display: block; height: 100%; background: var(--kp-amber); border-radius: 3px; }
+.kp .kp-find-chips { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0 0 38px; padding: 0; list-style: none; }
+.kp .kp-find-chip { padding: 3px 8px; border-radius: var(--kp-radius-tag); background: color-mix(in srgb, var(--kp-amber) 16%, var(--kp-bone)); color: var(--kp-ink); font: 500 12px/1.35 var(--kp-font-body); }
+.kp .kp-find-chip--bad { background: var(--kp-ink-08); color: var(--kp-ink-64); }
+.kp .kp-find-chip--bad::before { content: "– "; }
+.kp .kp-find-row-caution { margin: 6px 0 0 38px; font-size: 12px; line-height: 1.35; color: var(--kp-brass-ink); }
+.kp .kp-find-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 0 38px; }
+.kp .kp-find-act {
+  display: inline-flex; align-items: center; min-height: 36px; padding: 0 12px; border: var(--kp-hairline); border-radius: 999px;
+  background: var(--kp-bone-2); color: var(--kp-ink); font: 600 12.5px var(--kp-font-body); text-decoration: none; cursor: pointer;
+}
+.kp .kp-find-act:disabled { color: var(--kp-warden); border-color: color-mix(in srgb, var(--kp-warden) 40%, transparent); cursor: default; }
+.kp .kp-find-foot { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--kp-ink-12); }
+.kp .kp-find-foot p { margin: 0 0 6px; font-size: 12px; line-height: 1.4; }
+.kp .kp-find-stale { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--kp-warn-bg); font: 600 12px/1.4 var(--kp-font-body); color: var(--kp-brass-ink); }
+.kp .kp-find-cached { font: 500 11px var(--kp-font-mono) !important; color: var(--kp-brass-ink); }
+.kp .kp-find-note { color: var(--kp-ink-64); }
+.kp .kp-find-caution { font-weight: 600; color: var(--kp-ink); }
+.kp .kp-find-fine { color: var(--kp-ink-48); }
+.kp .kp-find-picker { margin-top: 2px; }
+.kp .kp-find-picker-field { display: flex; gap: 8px; align-items: center; position: sticky; top: 0; z-index: 1; padding: 4px 0 6px; background: var(--kp-bone); }
+.kp .kp-find-picker-field input { flex: 1; min-width: 0; height: 42px; padding: 0 12px; border: var(--kp-hairline); border-radius: 10px; background: #fff; font: 500 16px var(--kp-font-body); color: var(--kp-ink); }
+.kp .kp-find-h { margin: 10px 0 2px; font: 600 11px var(--kp-font-mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--kp-ink-64); }
+.kp .kp-find-picks { list-style: none; margin: 0; padding: 0; }
+.kp .kp-find-pick { display: flex; flex-direction: column; gap: 1px; width: 100%; min-height: 48px; padding: 7px 4px; border: 0; border-bottom: 1px solid var(--kp-ink-08); background: none; text-align: left; color: var(--kp-ink); cursor: pointer; }
+.kp .kp-find-pick[aria-current="true"] { background: color-mix(in srgb, var(--kp-amber) 12%, transparent); }
+.kp .kp-find-pick-name { font: 600 15px var(--kp-font-body); }
+.kp .kp-find-pick-sub { font-size: 12px; color: var(--kp-ink-64); }
+.kp .kp-find-empty { font-size: 14px; color: var(--kp-ink-64); }
+.kp .kp-find-close:focus-visible, .kp .kp-find-species:focus-visible, .kp .kp-find-radius button:focus-visible,
+.kp .kp-find-row-main:focus-visible, .kp .kp-find-act:focus-visible, .kp .kp-find-pill:focus-visible,
+.kp .kp-find-btn:focus-visible, .kp .kp-find-pick:focus-visible, .kp .kp-trip-find:focus-visible {
+  outline: 3px solid var(--kp-amber); outline-offset: 2px;
+}
+.kp .kp-trip-find {
+  align-self: flex-start; margin-top: 2px; padding: 0; border: 0; background: none; cursor: pointer;
+  font: 600 13px var(--kp-font-body); color: var(--kp-amber-ink);
+}
+.kp .kp-search-row--find .kp-search-name { color: var(--kp-amber-ink); }
+@media (prefers-reduced-motion: reduce) {
+  .kp .kp-find-progress li[data-state="active"] .kp-find-step-dot { animation: none; }
+}
+@media (min-width: 1024px) {
+  .kp.kp-trip.kp-find { transform: none; z-index: 31; }
+  .kp.kp-find .kp-trip-grab { display: none; }
+}

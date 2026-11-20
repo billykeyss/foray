@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { searchWaters } from "@/lib/fishing/search.ts";
 
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
@@ -10,6 +10,8 @@ export interface SpeciesHit {
   common: string;
   scientific: string;
   href: string;
+  /** Offered as a Forage Finder target (edible, not dangerous). */
+  findable?: boolean;
 }
 
 /** One search across fishing waters and species. Prop-driven: the page supplies species search
@@ -18,12 +20,15 @@ export default function UnifiedSearch({
   searchSpecies,
   onOpenWater,
   onOpenSpecies,
+  onFindSpecies,
   onChangeLocation,
   onClose,
 }: {
   searchSpecies: (q: string) => SpeciesHit[];
   onOpenWater: (slug: string) => void;
   onOpenSpecies: (hit: SpeciesHit) => void;
+  /** "Find spots for {species}": opens the Find sheet on the map. */
+  onFindSpecies?: (hit: SpeciesHit) => void;
   onChangeLocation: () => void;
   onClose: () => void;
 }) {
@@ -91,10 +96,18 @@ export default function UnifiedSearch({
             <section aria-label="Species">
               <h2 className="kp-search-h">Species</h2>
               {species.map((s) => (
-                <button key={s.id} type="button" data-result className="kp-search-row" onClick={() => onOpenSpecies(s)}>
-                  <span className="kp-search-name">{s.common}</span>
-                  <span className="kp-search-sub kp-search-sci">{s.scientific}</span>
-                </button>
+                <Fragment key={s.id}>
+                  <button type="button" data-result className="kp-search-row" onClick={() => onOpenSpecies(s)}>
+                    <span className="kp-search-name">{s.common}</span>
+                    <span className="kp-search-sub kp-search-sci">{s.scientific}</span>
+                  </button>
+                  {s.findable && onFindSpecies && (
+                    <button type="button" data-result className="kp-search-row kp-search-row--find" onClick={() => onFindSpecies(s)}>
+                      <span className="kp-search-name">Find spots for {s.common}</span>
+                      <span className="kp-search-sub">Score nearby ground by weather, terrain, trees and burns</span>
+                    </button>
+                  )}
+                </Fragment>
               ))}
             </section>
           )}
