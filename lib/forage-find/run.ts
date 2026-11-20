@@ -25,6 +25,10 @@ export type FindStep = "weather" | "terrain" | "trees" | "done";
 export const RADII_KM = [15, 40, 80] as const;
 export const DEFAULT_RADIUS_KM = 40;
 const POOR_SCORE = 45;
+/** Without weather a score is mostly season + terrain: never let it read as a strong spot. */
+export const LOW_CONFIDENCE_CAP = 50;
+/** 80 km searches sample z11 DEM tiles (~1/4 the tiles of z12) to save cellular data. */
+const demZoomFor = (radiusKm: number) => (radiusKm >= 80 ? 11 : 12);
 const TREE_LOOKUPS = 36;
 
 export interface FoundSpot {
@@ -51,7 +55,9 @@ export interface FindResult {
   at: string;
   /** Device-local date the search was for. */
   today: string;
-  status: "ok" | "poor" | "out-of-season";
+  /** ok / poor: full data. low-confidence: no weather, scores capped. unavailable: no weather and no
+   *  terrain, so no pins at all (never stored). out-of-season: gated before any network. */
+  status: "ok" | "poor" | "low-confidence" | "unavailable" | "out-of-season";
   season: { status: SeasonStatus; months: string; peak: string };
   /** One plain sentence for the top of the list. */
   message: string;
@@ -159,7 +165,8 @@ export async function findForageSpots(o: FindOptions): Promise<FindResult> {
   // Terrain (snap to the drainage low point first when the species likes drainages).
   o.onProgress?.("terrain");
   const snap = p.drainage >= 0.4;
-  const sample = await loadElevationSampler(pts, snap ? 750 : 350, deps.fetchTile, { signal });
+  const z = demZoomFor(radiusKm);
+  const sample = await loadElevationSampler(pts, snap ? 750 : 350, deps.fetchTile, { signal, z });
   abortIf(signal);
   let terrainOk = 0;
   const cands: Cand[] = pts.map((pt, i) => {
@@ -176,6 +183,19 @@ export async function findForageSpots(o: FindOptions): Promise<FindResult> {
     };
   });
   if (!terrainOk) notes.push("Terrain unavailable: scored without slope, drainage or elevation.");
+  const weatherOk = conds.some((c) => c != null);
+  if (!weatherOk && !terrainOk) {
+    // Only the season is left: ranking on that alone would be fiction. No pins, never stored.
+    o.onProgress?.("done");
+    return {
+      ...base,
+      status: "unavailable",
+      message: "Couldn't reach the weather or terrain services, so there's nothing to rank. Check your connection and try again.",
+      conditions: null,
+      spots: [],
+      notes,
+    };
+  }
   for (const c of cands) c.score = scoreSpot(p, month, c).score;
 
   // Tree cover for the best few (one request each).
@@ -200,7 +220,9 @@ export async function findForageSpots(o: FindOptions): Promise<FindResult> {
   if (top.length && treeFails === top.length) notes.push("Tree cover unavailable: scored without it.");
   else if (treeFails) notes.push(`Tree cover missing for ${treeFails} of ${top.length} spots.`);
 
-  const scored = top.map((c) => ({ c, s: scoreSpot(p, month, c) })).map(({ c, s }) => ({ ...c, score: s.score, s }));
+  const scored = top
+    .map((c) => ({ c, s: scoreSpot(p, month, c) }))
+    .map(({ c, s }) => ({ ...c, score: weatherOk ? s.score : Math.min(LOW_CONFIDENCE_CAP, s.score), s }));
   const best = pickSpaced(scored, 5, 2);
   const spots: FoundSpot[] = best.map((b, i) => ({
     rank: i + 1,
@@ -221,6 +243,16 @@ export async function findForageSpots(o: FindOptions): Promise<FindResult> {
   const why = frozen
     ? "frozen ground or snow across the area"
     : (best[0]?.s.reasons.find((r) => !r.good)?.text.toLowerCase() ?? "nothing scores well");
+  if (!weatherOk) {
+    return {
+      ...base,
+      status: "low-confidence",
+      message: `Low confidence: weather is unavailable, so these are ranked on terrain, trees and season only (scores capped at ${LOW_CONFIDENCE_CAP}).`,
+      conditions: null,
+      spots,
+      notes,
+    };
+  }
   return {
     ...base,
     status: poor ? "poor" : "ok",

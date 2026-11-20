@@ -4,6 +4,7 @@
  * never touch the network; the browser loader (decodeTileInBrowser) lives at the bottom.
  */
 import { compass8, lonLatToTilePixel, offsetM, type Compass, type LatLon } from "./geo.ts";
+import { timedSignal } from "./net.ts";
 
 export const DEM_URL = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png";
 export const DEM_ZOOM = 12;
@@ -174,7 +175,7 @@ export function snapToDrainage(sample: ElevationSampler, lat: number, lon: numbe
 export function browserFetchTile(fetchImpl: typeof fetch = fetch, signal?: AbortSignal): FetchTile {
   return async (z, x, y) => {
     const url = DEM_URL.replace("{z}", String(z)).replace("{x}", String(x)).replace("{y}", String(y));
-    const res = await fetchImpl(url, { signal });
+    const res = await fetchImpl(url, { signal: timedSignal(signal) });
     if (!res.ok) return null;
     const bmp = await createImageBitmap(await res.blob());
     const w = bmp.width;

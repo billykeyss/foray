@@ -1,6 +1,7 @@
 /** Tree cover at a point: LANDFIRE 2023 EVT via WMS GetFeatureInfo + the generated code table. */
 import { EVT_NAMES } from "./evt-names.ts";
 import { lonLatTo3857 } from "./geo.ts";
+import { FETCH_TIMEOUT_MS, timedSignal } from "./net.ts";
 
 export const LANDFIRE_WMS = "https://edcintl.cr.usgs.gov/geoserver/landfire/wms";
 const LAYER = "LF2023_EVT_CONUS";
@@ -52,8 +53,8 @@ export function describeEvt(code: number | null): EvtInfo | null {
 }
 
 /** Fetch and describe the EVT at a point. Throws on HTTP/network failure; null when no data there. */
-export async function fetchEvt(lat: number, lon: number, fetchImpl: FetchLike, signal?: AbortSignal): Promise<EvtInfo | null> {
-  const res = await fetchImpl(evtFeatureInfoUrl(lat, lon), { signal });
+export async function fetchEvt(lat: number, lon: number, fetchImpl: FetchLike, signal?: AbortSignal, timeoutMs = FETCH_TIMEOUT_MS): Promise<EvtInfo | null> {
+  const res = await fetchImpl(evtFeatureInfoUrl(lat, lon), { signal: timedSignal(signal, timeoutMs) });
   if (!res.ok) throw new Error(`LANDFIRE HTTP ${res.status ?? "error"}`);
   return describeEvt(parseEvtResponse(await res.json()));
 }

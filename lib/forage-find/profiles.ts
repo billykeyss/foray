@@ -70,6 +70,8 @@ export const HEADLINE_OVERRIDES: Record<string, Partial<HabitatProfile>> = {
   },
   "cantharellus-formosus": { soilTempC: [5, 16], moisture: "high", drainage: 0.3 },
   "cantharellus-subalbidus": { soilTempC: [5, 16], moisture: "high", drainage: 0.3 },
+  // autoCompiled in the catalog, but the CA oak chanterelle is the headline coastal target and its
+  // record is complete (hosts, season, lookalikes); this override is what makes it findable.
   "cantharellus-californicus": {
     hosts: ["oak", "tanoak", "madrone"],
     elevationM: { min: 0, max: 1500 },
@@ -244,7 +246,31 @@ export function buildProfile(s: MushroomSpecies): HabitatProfile {
     cautions: s.edibility === "edible-when-cooked" ? [COOK] : [],
     westRelevant: (s.regionsPNW ?? []).some((r) => WEST.test(r)),
   };
-  return { ...base, ...(HEADLINE_OVERRIDES[s.id] ?? {}) };
+  const merged = { ...base, ...(HEADLINE_OVERRIDES[s.id] ?? {}) };
+  return { ...merged, cautions: [...merged.cautions, ...lookalikeCautions(s)] };
+}
+
+const firstSentence = (t: string) => {
+  const one = (t || "").split(/(?<=\.)\s/)[0].trim().replace(/\.$/, "");
+  return one.length > 160 ? `${one.slice(0, 157).trimEnd()}…` : one;
+};
+
+/** "Deadly lookalike: Amanita ocreata (Destroying angel): <how to tell>" for every deadly lookalike,
+ *  plus up to two toxic ones. Generated from the catalog so it never drifts from the species page. */
+export function lookalikeCautions(s: Pick<MushroomSpecies, "lookalikes">): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const line = (kind: string, l: NonNullable<MushroomSpecies["lookalikes"]>[number]) => {
+    if (seen.has(l.scientific)) return;
+    seen.add(l.scientific);
+    const tell = l.keyFeatures?.length ? l.keyFeatures.slice(0, 2).join("; ") : firstSentence(l.distinguishingFeature);
+    const name = l.name && l.name !== l.scientific ? `${l.scientific} (${l.name})` : l.scientific;
+    out.push(`${kind} lookalike: ${name}${tell ? ` — ${tell}` : ""}.`.replace(/\.\.$/, "."));
+  };
+  const all = s.lookalikes ?? [];
+  for (const l of all) if (l.danger === "deadly") line("Deadly", l);
+  for (const l of all.filter((x) => x.danger === "toxic").slice(0, 2)) line("Toxic", l);
+  return out;
 }
 
 /** Offered as a find target: choice/edible curated species, or a headline override. Never dangerous. */

@@ -1,8 +1,9 @@
 /** Past-week weather and soil at many points in one Open-Meteo request (chunked to ≤50 points). */
 import type { LatLon } from "./geo.ts";
+import { FETCH_TIMEOUT_MS, timedSignal } from "./net.ts";
 
 export interface Conditions {
-  /** Rain over the last 7 days including today, mm. */
+  /** Rain over the 7 full days before today, mm (today is excluded: it is partly forecast). */
   rain7dMm: number;
   /** Mean daily relative humidity over the same 7 days, %. */
   humidityPct: number | null;
@@ -55,7 +56,10 @@ export function parseOpenMeteo(loc: OmLocation, todayIso: string): Conditions {
   const pick = (vals: (number | null)[], times: string[], from: string, key: (t: string) => string = (t) => t) =>
     vals.filter((v, i) => v != null && Number.isFinite(v) && key(times[i]) >= from && key(times[i]) <= todayIso) as number[];
 
-  const rain = pick(col(loc.daily, "precipitation_sum"), dTime, from7);
+  // Rain: the 7 full days before today. Today's daily total is mostly forecast, so it's left out.
+  const yesterday = minusDays(todayIso, 1);
+  const rainVals = col(loc.daily, "precipitation_sum");
+  const rain = rainVals.filter((v, i) => v != null && Number.isFinite(v) && dTime[i] >= minusDays(todayIso, 7) && dTime[i] <= yesterday) as number[];
   const rh = pick(col(loc.daily, "relative_humidity_2m_mean"), dTime, from7);
   const tmax = pick(col(loc.daily, "temperature_2m_max"), dTime, from3);
   const hTime = (loc.hourly?.time ?? []) as string[];
@@ -75,11 +79,11 @@ export function parseOpenMeteo(loc: OmLocation, todayIso: string): Conditions {
 type FetchLike = (url: string, init?: { signal?: AbortSignal }) => Promise<{ ok: boolean; status?: number; json: () => Promise<unknown> }>;
 
 /** Conditions for every point, in order. Throws if any chunk fails (caller degrades). */
-export async function fetchConditions(points: LatLon[], todayIso: string, fetchImpl: FetchLike, signal?: AbortSignal): Promise<Conditions[]> {
+export async function fetchConditions(points: LatLon[], todayIso: string, fetchImpl: FetchLike, signal?: AbortSignal, timeoutMs = FETCH_TIMEOUT_MS): Promise<Conditions[]> {
   const out: Conditions[] = [];
   for (let i = 0; i < points.length; i += CHUNK) {
     const chunk = points.slice(i, i + CHUNK);
-    const res = await fetchImpl(buildOpenMeteoUrl(chunk), { signal });
+    const res = await fetchImpl(buildOpenMeteoUrl(chunk), { signal: timedSignal(signal, timeoutMs) });
     if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status ?? "error"}`);
     const body = await res.json();
     const locs = (Array.isArray(body) ? body : [body]) as OmLocation[];

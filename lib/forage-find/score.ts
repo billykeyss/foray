@@ -25,6 +25,8 @@ export interface Reason {
   good: boolean;
   /** Weighted contribution, for ordering. */
   weight: number;
+  /** Raw metric value behind `text`, so the UI can show the user's units: tpl has a {v} slot. */
+  q?: { kind: "rain" | "temp"; value: number; tpl: string };
 }
 
 export interface SpotInput {
@@ -52,11 +54,19 @@ const FACING: Record<Compass, string> = {
 };
 const OPPOSITE: Record<Compass, Compass> = { N: "S", NE: "SW", E: "W", SE: "NW", S: "N", SW: "NE", W: "E", NW: "SE" };
 
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** Whole-word keyword match: "pine" matches "Ponderosa Pine" and "Pine-Oak", never "Subalpine". */
+export function hasKeyword(hay: string, key: string): boolean {
+  return new RegExp(`(^|[^a-z])${escapeRe(key.toLowerCase())}($|[^a-z])`).test(hay.toLowerCase());
+}
+
 function hostFactor(p: HabitatProfile, e: EvtInfo): { f: number; text: string } {
-  const hay = `${e.name} ${e.group} ${e.coverType}`.toLowerCase();
+  const hay = `${e.name} ${e.group} ${e.coverType}`;
   const short = evtShortName(e);
-  if (p.hosts.some((k) => hay.includes(k))) return { f: 1, text: short };
   const lf = e.lifeform;
+  // A host keyword only counts as a host when LANDFIRE says there are trees there ("Oak chaparral"
+  // and "Subalpine meadow" are not host forest). Open-ground species don't need trees.
+  if (p.hosts.some((k) => hasKeyword(hay, k)) && (lf === "Tree" || p.substrate === "open")) return { f: 1, text: short };
   if (lf === "Water" || lf === "Snow-Ice" || lf === "Barren") return { f: 0, text: short };
   if (p.substrate === "open") {
     if (lf === "Herb" || lf === "Shrub" || lf === "Developed" || lf === "Agriculture") return { f: 0.6, text: short };
@@ -109,6 +119,7 @@ export function scoreSpot(p: HabitatProfile, month: number, s: SpotInput): SpotS
     const f = parts.reduce((a, [v, w]) => a + v * w, 0) / parts.reduce((a, [, w]) => a + w, 0);
     const rainText = c.rain7dMm >= 1 ? `${Math.round(c.rain7dMm)} mm rain past 7 d` : "No rain past 7 d";
     add("moisture", f, rainText);
+    if (c.rain7dMm >= 1) reasons[reasons.length - 1].q = { kind: "rain", value: c.rain7dMm, tpl: "{v} rain past 7 d" };
     if (soilF != null && soilF < 0.3) reasons.push({ factor: "moisture", text: "Dry soil", good: false, weight: 4 });
   }
 
@@ -119,6 +130,7 @@ export function scoreSpot(p: HabitatProfile, month: number, s: SpotInput): SpotS
     const off = t < lo ? lo - t : t > hi ? t - hi : 0;
     const label = `Soil ${Math.round(t)} °C`;
     add("soilTemp", 1 - off / 5, off === 0 ? label : t < lo ? `${label}: too cold` : `${label}: too warm`, off === 0);
+    reasons[reasons.length - 1].q = { kind: "temp", value: t, tpl: off === 0 ? "Soil {v}" : t < lo ? "Soil {v}: too cold" : "Soil {v}: too warm" };
   }
 
   // Host trees / cover (only once looked up).
@@ -129,8 +141,6 @@ export function scoreSpot(p: HabitatProfile, month: number, s: SpotInput): SpotS
     water = s.evt.lifeform === "Water";
     if (s.evt.lifeform === "Developed" || /Developed/.test(s.evt.physiognomy)) cautions.push("Developed land: likely private property.");
   }
-  // Dead-flat DEM (slope and relief ~0 at 30 m) is almost always a lake surface.
-  const flat = !!s.terrain && s.terrain.slopeDeg < 0.3 && Math.abs(s.terrain.tpiM) < 0.3;
 
   // Terrain: drainage preference and slope facing.
   if (s.terrain) {
@@ -143,10 +153,11 @@ export function scoreSpot(p: HabitatProfile, month: number, s: SpotInput): SpotS
     if (kind === "drainage") bits.push("Drainage bottom");
     if (kind === "ridge") bits.push("Ridge");
     const [first, ...rest] = bits;
-    if (flat) f = 0.1;
     // A middling terrain score (0.4-0.6) is neutral: scored, but not worth a chip either way.
-    const neutral = !flat && f >= 0.4 && f < 0.6;
-    add("terrain", f, neutral || (!first && !flat) ? null : flat ? "Dead-flat: likely open water" : first!);
+    // (Flat ground is not penalised: meadows are prime puffball / shaggy mane habitat. Water is
+    // known only from LANDFIRE, handled above.)
+    const neutral = f >= 0.4 && f < 0.6;
+    add("terrain", f, neutral || !first ? null : first);
     for (const b of rest) reasons.push({ factor: "terrain", text: b, good: f >= 0.6, weight: 1 });
     // Facing is only a reason when the species has a preference.
     if (p.aspects && t && (p.aspects.includes(t) || p.aspects.includes(OPPOSITE[t])))

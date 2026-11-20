@@ -226,7 +226,7 @@ test("LANDFIRE GetFeatureInfo URL and parse", async () => {
   await assert.rejects(fetchEvt(39.3, -120.2, async () => ({ ok: false, status: 503 })));
 });
 
-test("scoreSpot: open water scores zero; developed land carries a private-property caution", () => {
+test("scoreSpot: LANDFIRE open water scores zero; developed land carries a private-property caution", () => {
   const b = byId("boletus-barrowsii");
   const t = { elevationM: 1900, slopeDeg: 5, aspect: "E", tpiM: 0 };
   const lake = scoreSpot(b, 9, { lat: 0, lon: 0, terrain: t, cond: WET, evt: { code: 7292, name: "Open Water", lifeform: "Water", physiognomy: "Open Water", group: "Open Water", coverType: "Open Water" }, burn: null });
@@ -234,7 +234,9 @@ test("scoreSpot: open water scores zero; developed land carries a private-proper
   const town = scoreSpot(b, 9, { lat: 0, lon: 0, terrain: t, cond: WET, evt: describeEvt(7298), burn: null });
   assert.ok(town.cautions.some((c) => /private/i.test(c)));
   const flat = scoreSpot(b, 9, { lat: 0, lon: 0, terrain: { elevationM: 1900, slopeDeg: 0, aspect: null, tpiM: 0 }, cond: WET, burn: null });
-  assert.ok(flat.reasons.some((r) => !r.good && /water/i.test(r.text)));
+  // Flat ground alone is a meadow, not a lake: only LANDFIRE water zeroes a spot.
+  assert.ok(!flat.reasons.some((r) => /water/i.test(r.text)));
+  assert.ok(flat.score > 0);
 });
 
 test("stored result: tolerant parse", async () => {
