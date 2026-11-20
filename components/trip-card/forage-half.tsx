@@ -13,10 +13,13 @@ export default function ForageHalf({
   reading,
   loading,
   picks,
+  onFind,
 }: {
   reading: SporeReading | null;
   loading: boolean;
   picks: ForagePick[];
+  /** Opens the Find sheet (Forage Finder) for the top in-season pick. */
+  onFind?: () => void;
 }) {
   return (
     <div className="kp-trip-half kp-trip-half--forage">
@@ -39,6 +42,11 @@ export default function ForageHalf({
       ) : reading ? (
         <p className="kp-trip-empty">Nothing edible in season here</p>
       ) : null}
+      {onFind && (
+        <button type="button" className="kp-trip-find" onClick={onFind}>
+          Find spots ›
+        </button>
+      )}
     </div>
   );
 }

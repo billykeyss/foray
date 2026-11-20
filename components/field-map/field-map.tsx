@@ -29,6 +29,10 @@ import {
   WATERS_SRC,
   type ForageSpot,
   type Overlays,
+  FIND_LAYER,
+  setFind,
+  type FindPin,
+  type FindCircle,
 } from "./layers.ts";
 
 export interface FieldMapProps {
@@ -46,6 +50,13 @@ export interface FieldMapProps {
   onLongPress: (lon: number, lat: number) => void;
   /** A GPS fix from the map's locate button (the map has already panned to it). */
   onLocate?: (lon: number, lat: number) => void;
+  /** Forage Finder result pins (numbered) and the search-radius circle; empty/null clears them. */
+  findPins?: FindPin[];
+  findSelected?: number | null;
+  findCircle?: FindCircle | null;
+  onFindPinTap?: (rank: number) => void;
+  /** One-shot camera move; a new `key` triggers it (fly to a point, or fit bounds). */
+  camera?: { key: string; center?: [number, number]; zoom?: number; bounds?: [[number, number], [number, number]] } | null;
   /** Screen insets (px) covered by UI over the map, e.g. the trip card; the camera centres in what's left. */
   padding?: { top?: number; bottom?: number; left?: number; right?: number };
 }
@@ -94,6 +105,7 @@ function burnPopup(p: Record<string, unknown>): HTMLElement {
 export default function FieldMap(props: FieldMapProps) {
   const el = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
+  const loadedOnce = useRef(false);
   const latest = useRef(props);
   latest.current = props;
   // Controls are shown here so the map works standalone; base/overlays are seeded from props.
@@ -122,6 +134,7 @@ export default function FieldMap(props: FieldMapProps) {
       attributionControl: false,
     });
     mapRef.current = map;
+    map.once("load", () => (loadedOnce.current = true));
     if (process.env.NODE_ENV !== "production") (window as unknown as { __fieldMap?: MLMap }).__fieldMap = map;
     map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-left");
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showCompass: true }), "top-left");
@@ -135,6 +148,9 @@ export default function FieldMap(props: FieldMapProps) {
         saved: p.savedSpots,
         line: p.spotlightLine,
         burns: burnsCache,
+        findPins: p.findPins,
+        findSelected: p.findSelected,
+        findCircle: p.findCircle,
       });
     };
     map.on("style.load", onStyle);
@@ -142,6 +158,8 @@ export default function FieldMap(props: FieldMapProps) {
     const pick = (layers: string[], pt: maplibregl.PointLike) =>
       map.queryRenderedFeatures(pt, { layers: layers.filter((l) => map.getLayer(l)) })[0];
     map.on("click", (e) => {
+      const f = pick([FIND_LAYER], e.point);
+      if (f) return latest.current.onFindPinTap?.(Number(f.properties?.rank));
       const w = pick([WATER_PINS], e.point);
       if (w) return latest.current.onWaterTap(w.properties?.slug);
       const sv = pick([SAVED_LAYER], e.point);
@@ -166,7 +184,7 @@ export default function FieldMap(props: FieldMapProps) {
           );
       }
     });
-    for (const l of [WATER_PINS, SAVED_LAYER, SPOTS_LAYER, WATER_CLUSTERS]) {
+    for (const l of [FIND_LAYER, WATER_PINS, SAVED_LAYER, SPOTS_LAYER, WATER_CLUSTERS]) {
       map.on("mouseenter", l, () => (map.getCanvas().style.cursor = "pointer"));
       map.on("mouseleave", l, () => (map.getCanvas().style.cursor = ""));
     }
@@ -265,6 +283,28 @@ export default function FieldMap(props: FieldMapProps) {
     const src = map?.getSource(SAVED_SRC) as maplibregl.GeoJSONSource | undefined;
     src?.setData(savedFeatures(props.savedSpots ?? []));
   }, [props.savedSpots]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map) setFind(map, props.findPins ?? [], props.findSelected ?? null, props.findCircle ?? null);
+  }, [props.findPins, props.findSelected, props.findCircle]);
+
+  const cam = props.camera;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !cam) return;
+    const go = () => {
+      if (cam.bounds) map.fitBounds(cam.bounds, { padding: 56, maxZoom: 12, duration: 800 });
+      else if (cam.center) map.flyTo({ center: cam.center, zoom: cam.zoom ?? Math.max(map.getZoom(), 13), duration: 900 });
+    };
+    // A camera animation started before the first load (e.g. a deep link with a stored result)
+    // stalls MapLibre's terrain-enabled load; wait for it.
+    if (loadedOnce.current) go();
+    else map.once("load", go);
+    return () => {
+      map.off("load", go);
+    };
+  }, [cam?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pad = props.padding;
   useEffect(() => {

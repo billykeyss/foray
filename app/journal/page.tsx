@@ -13,6 +13,7 @@ import { useLocation } from "@/lib/location-context";
 import { computeSporeScore } from "@/lib/weather";
 import { compressPhoto, dataUrlSize } from "@/lib/photo";
 import { getCurrentGps, formatLatLon } from "@/lib/geo";
+import { takeJournalDraft, type JournalDraft } from "@/lib/journal-draft.ts";
 
 export default function JournalPage() {
   const { entries, loaded, add, update, remove } = useJournal();
@@ -60,6 +61,15 @@ export default function JournalPage() {
   const EMPTY_CATCH: CatchForm = { waterSlug: "", species: "", length: "", kept: false, reachId: "" };
   const [catchForm, setCatchForm] = useState<CatchForm>(EMPTY_CATCH);
 
+  // A draft handed over by Forage Finder's "Log find" opens a prefilled new entry.
+  const draftRef = useRef<JournalDraft | null>(null);
+  useEffect(() => {
+    const d = takeJournalDraft();
+    if (!d) return;
+    draftRef.current = d;
+    setEditing("new");
+  }, []);
+
   // Seed form values when opened
   useEffect(() => {
     if (!open) return;
@@ -82,6 +92,16 @@ export default function JournalPage() {
       if (lat != null && lon != null) {
         setFormLat(lat.toFixed(5));
         setFormLon(lon.toFixed(5));
+      }
+      const d = draftRef.current;
+      if (d) {
+        draftRef.current = null;
+        setSpecies(d.species);
+        if (d.notes) setNotes(d.notes);
+        if (d.lat != null && d.lon != null) {
+          setFormLat(d.lat.toFixed(5));
+          setFormLon(d.lon.toFixed(5));
+        }
       }
     }
     setGpsError(null);

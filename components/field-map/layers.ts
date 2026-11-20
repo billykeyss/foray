@@ -25,6 +25,13 @@ const DIAMOND = "saved-diamond";
 export const LINE_SRC = "spotlight";
 export const LINE_LAYER = "spotlight-line";
 const SQUARE = "water-square";
+/** Forage Finder: numbered amber result pins and the faint search-radius circle. */
+export const FIND_SRC = "find-pins";
+export const FIND_LAYER = "find-pins-circle";
+export const FIND_LABEL = "find-pins-label";
+export const FIND_RADIUS_SRC = "find-radius";
+const FIND_RADIUS_FILL = "find-radius-fill";
+const FIND_RADIUS_LINE = "find-radius-line";
 
 const FOREST_TILES =
   "https://apps.fs.usda.gov/arcx/rest/services/EDW/EDW_ProclaimedForestsAndGrasslands_01/MapServer/export" +
@@ -94,6 +101,41 @@ export function spotFeatures(spots: ForageSpot[]) {
   };
 }
 
+export interface FindPin {
+  rank: number;
+  lon: number;
+  lat: number;
+}
+export interface FindCircle {
+  lat: number;
+  lon: number;
+  radiusKm: number;
+}
+
+export function findFeatures(pins: FindPin[], selected: number | null) {
+  return {
+    type: "FeatureCollection" as const,
+    features: pins.map((p) => ({
+      type: "Feature" as const,
+      geometry: { type: "Point" as const, coordinates: [p.lon, p.lat] },
+      properties: { rank: p.rank, label: String(p.rank), selected: p.rank === selected ? 1 : 0 },
+    })),
+  };
+}
+
+/** A 64-gon approximating a geodesic circle (good enough for a faint radius hint). */
+export function circleFeature(c: FindCircle | null) {
+  if (!c) return empty;
+  const pts: [number, number][] = [];
+  const kmPerDegLat = 111.32;
+  const kmPerDegLon = 111.32 * Math.cos((c.lat * Math.PI) / 180);
+  for (let i = 0; i <= 64; i++) {
+    const a = (i / 64) * Math.PI * 2;
+    pts.push([c.lon + (Math.sin(a) * c.radiusKm) / kmPerDegLon, c.lat + (Math.cos(a) * c.radiusKm) / kmPerDegLat]);
+  }
+  return { type: "Feature" as const, properties: {}, geometry: { type: "Polygon" as const, coordinates: [pts] } };
+}
+
 export function savedFeatures(spots: ForageSpot[]) {
   return spotFeatures(spots);
 }
@@ -150,6 +192,9 @@ export function addFieldLayers(
     spots: ForageSpot[];
     saved?: ForageSpot[];
     line: [number, number][] | null;
+    findPins?: FindPin[];
+    findSelected?: number | null;
+    findCircle?: FindCircle | null;
     /** Burn perimeters, once loaded (they're fetched lazily on first toggle). */
     burns?: BurnCollection | null;
   },
@@ -224,6 +269,16 @@ export function addFieldLayers(
     });
   }
   setLine(map, s.line);
+  if (!map.getSource(FIND_RADIUS_SRC)) {
+    map.addSource(FIND_RADIUS_SRC, { type: "geojson", data: circleFeature(s.findCircle ?? null) as never });
+    map.addLayer({ id: FIND_RADIUS_FILL, type: "fill", source: FIND_RADIUS_SRC, paint: { "fill-color": "#e0a043", "fill-opacity": 0.06 } });
+    map.addLayer({
+      id: FIND_RADIUS_LINE,
+      type: "line",
+      source: FIND_RADIUS_SRC,
+      paint: { "line-color": "#e0a043", "line-width": 1.5, "line-opacity": 0.7, "line-dasharray": [2, 2] },
+    });
+  }
   if (!map.getSource(WATERS_SRC)) {
     map.addSource(WATERS_SRC, {
       type: "geojson",
@@ -287,6 +342,38 @@ export function addFieldLayers(
       layout: { "icon-image": DIAMOND, "icon-size": 0.9, "icon-allow-overlap": true },
     });
   }
+  if (!map.getSource(FIND_SRC)) {
+    map.addSource(FIND_SRC, { type: "geojson", data: findFeatures(s.findPins ?? [], s.findSelected ?? null) });
+    map.addLayer({
+      id: FIND_LAYER,
+      type: "circle",
+      source: FIND_SRC,
+      paint: {
+        "circle-color": "#e0a043",
+        "circle-radius": ["case", ["==", ["get", "selected"], 1], 15, 12],
+        "circle-stroke-color": ["case", ["==", ["get", "selected"], 1], "#1a2b22", "#f3efe4"],
+        "circle-stroke-width": ["case", ["==", ["get", "selected"], 1], 3, 2],
+      },
+    });
+    map.addLayer({
+      id: FIND_LABEL,
+      type: "symbol",
+      source: FIND_SRC,
+      layout: {
+        "text-field": ["get", "label"],
+        "text-size": 13,
+        "text-font": ["Open Sans Semibold"],
+        "text-allow-overlap": true,
+        "text-ignore-placement": true,
+      } as never,
+      paint: { "text-color": "#1a2b22" },
+    });
+  }
+}
+
+export function setFind(map: Map, pins: FindPin[], selected: number | null, circle: FindCircle | null) {
+  (map.getSource(FIND_SRC) as GeoJSONSource | undefined)?.setData(findFeatures(pins, selected));
+  (map.getSource(FIND_RADIUS_SRC) as GeoJSONSource | undefined)?.setData(circleFeature(circle) as never);
 }
 
 export function setLine(map: Map, line: [number, number][] | null) {
