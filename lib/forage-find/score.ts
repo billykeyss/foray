@@ -15,7 +15,7 @@ import type { Compass } from "./geo.ts";
 
 export const FIND_CAUTION = "Check land status and fire closures; verify ID before eating.";
 
-export const WEIGHTS = { season: 15, elevation: 15, moisture: 20, soilTemp: 15, host: 15, terrain: 10, burn: 10 } as const;
+export const WEIGHTS = { season: 15, elevation: 15, moisture: 20, soilTemp: 15, host: 20, terrain: 10, burn: 10 } as const;
 export type Factor = keyof typeof WEIGHTS;
 
 export interface Reason {
@@ -65,7 +65,7 @@ function hostFactor(p: HabitatProfile, e: EvtInfo): { f: number; text: string } 
   if (!p.hosts.length) {
     return lf === "Tree" ? { f: 0.7, text: short } : { f: 0.2, text: `Few trees: ${short}` };
   }
-  if (lf === "Tree") return { f: 0.35, text: `Not its host trees: ${short}` };
+  if (lf === "Tree") return { f: 0.25, text: `Not its host trees: ${short}` };
   if (lf === "Shrub") return { f: 0.1, text: `No host trees: ${short}` };
   return { f: 0, text: `No host trees: ${short}` };
 }
@@ -78,9 +78,10 @@ export function scoreSpot(p: HabitatProfile, month: number, s: SpotInput): SpotS
   const factors: Partial<Record<Factor, number>> = {};
   const reasons: Reason[] = [];
   const cautions = [...p.cautions];
-  const add = (factor: Factor, f: number, text: string | null, goodAt = 0.6) => {
+  /** Record a factor; `good` defaults to f ≥ 0.6 (a "too cold" reason is never good, however close). */
+  const add = (factor: Factor, f: number, text: string | null, good: boolean = f >= 0.6) => {
     factors[factor] = clamp(f);
-    if (text) reasons.push({ factor, text, good: f >= goodAt, weight: w(factor) * (f >= goodAt ? f : 1 - f) });
+    if (text) reasons.push({ factor, text, good, weight: w(factor) * (good ? clamp(f) : 1 - clamp(f)) });
   };
 
   // Season (the caller has already gated out-of-season species; still scored for ordering).
@@ -92,7 +93,7 @@ export function scoreSpot(p: HabitatProfile, month: number, s: SpotInput): SpotS
   if (p.elevationM && elev != null) {
     const { min, max } = p.elevationM;
     const off = elev < min ? min - elev : elev > max ? elev - max : 0;
-    add("elevation", 1 - off / 400, off === 0 ? "In its elevation range" : elev < min ? "Below its usual elevation" : "Above its usual elevation");
+    add("elevation", 1 - off / 400, off === 0 ? "In its elevation range" : elev < min ? "Below its usual elevation" : "Above its usual elevation", off === 0);
   }
 
   // Moisture: past-week rain, soil moisture, humidity.
@@ -117,7 +118,7 @@ export function scoreSpot(p: HabitatProfile, month: number, s: SpotInput): SpotS
     const t = c.soilTempC;
     const off = t < lo ? lo - t : t > hi ? t - hi : 0;
     const label = `Soil ${Math.round(t)} °C`;
-    add("soilTemp", 1 - off / 5, off === 0 ? label : t < lo ? `${label}: too cold` : `${label}: too warm`);
+    add("soilTemp", 1 - off / 5, off === 0 ? label : t < lo ? `${label}: too cold` : `${label}: too warm`, off === 0);
   }
 
   // Host trees / cover (only once looked up).
@@ -143,9 +144,13 @@ export function scoreSpot(p: HabitatProfile, month: number, s: SpotInput): SpotS
     if (kind === "ridge") bits.push("Ridge");
     const [first, ...rest] = bits;
     if (flat) f = 0.1;
-    add("terrain", f, flat ? "Dead-flat: likely open water" : (first ?? (t ? FACING[t] : "Gentle ground")));
+    // A middling terrain score (0.4-0.6) is neutral: scored, but not worth a chip either way.
+    const neutral = !flat && f >= 0.4 && f < 0.6;
+    add("terrain", f, neutral || (!first && !flat) ? null : flat ? "Dead-flat: likely open water" : first!);
     for (const b of rest) reasons.push({ factor: "terrain", text: b, good: f >= 0.6, weight: 1 });
-    if (first && t) reasons.push({ factor: "terrain", text: FACING[t], good: !!p.aspects?.includes(t) || !p.aspects, weight: 1 });
+    // Facing is only a reason when the species has a preference.
+    if (p.aspects && t && (p.aspects.includes(t) || p.aspects.includes(OPPOSITE[t])))
+      reasons.push({ factor: "terrain", text: FACING[t], good: p.aspects.includes(t), weight: 2 });
   }
 
   // Burns.
@@ -169,6 +174,9 @@ export function scoreSpot(p: HabitatProfile, month: number, s: SpotInput): SpotS
   }
   let score = wsum ? (total / wsum) * 100 : 0;
 
+  // Mycorrhizal / host-bound species don't fruit without their trees: a known host mismatch
+  // scales the whole score down rather than costing just its weight.
+  if (factors.host != null && p.substrate !== "open" && p.hosts.length) score *= 0.35 + 0.65 * factors.host;
   if (water) score = 0;
 
   // Snow / freeze proxy.

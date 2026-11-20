@@ -24,8 +24,8 @@ export interface FindDeps {
 export type FindStep = "weather" | "terrain" | "trees" | "done";
 export const RADII_KM = [15, 40, 80] as const;
 export const DEFAULT_RADIUS_KM = 40;
-const POOR_SCORE = 35;
-const TREE_LOOKUPS = 15;
+const POOR_SCORE = 45;
+const TREE_LOOKUPS = 36;
 
 export interface FoundSpot {
   rank: number;
@@ -121,7 +121,7 @@ export async function findForageSpots(o: FindOptions): Promise<FindResult> {
     return {
       ...base,
       status: "out-of-season",
-      message: `${p.name} fruit ${base.season.months}, so it's out of season now.`,
+      message: `${p.name} fruits ${base.season.months}, so it's out of season now.`,
       conditions: null,
       spots: [],
       notes: [],
@@ -195,7 +195,7 @@ export async function findForageSpots(o: FindOptions): Promise<FindResult> {
       }
     }
   };
-  await Promise.all(Array.from({ length: Math.min(4, top.length) }, worker));
+  await Promise.all(Array.from({ length: Math.min(6, top.length) }, worker));
   abortIf(signal);
   if (top.length && treeFails === top.length) notes.push("Tree cover unavailable: scored without it.");
   else if (treeFails) notes.push(`Tree cover missing for ${treeFails} of ${top.length} spots.`);

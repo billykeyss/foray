@@ -142,7 +142,7 @@ test("scoreSpot: missing sources are skipped, not counted as zero", () => {
   const b = byId("boletus-barrowsii");
   const t = { elevationM: 2000, slopeDeg: 5, aspect: "E", tpiM: 0 };
   const noTrees = scoreSpot(b, 9, { lat: 0, lon: 0, terrain: t, cond: WET, evt: "unavailable", burn: null });
-  const noWx = scoreSpot(b, 9, { lat: 0, lon: 0, terrain: t, cond: null, evt: FIR, burn: null });
+  const noWx = scoreSpot(b, 9, { lat: 0, lon: 0, terrain: t, cond: null, evt: describeEvt(7053), burn: null }); // ponderosa: a host
   assert.ok(noTrees.score > 40);
   assert.ok(noWx.score > 40);
   assert.ok(!noTrees.reasons.some((r) => /host/i.test(r.text)));
@@ -256,4 +256,13 @@ test("generated EVT table: banner, CA/NV codes present, eastern systems absent",
   assert.deepEqual(splitCsvLine('1,"a, b",c'), ["1", "a, b", "c"]);
   assert.equal(keepCode(4401, "Alaska Arctic"), false);
   assert.equal(keepCode(7032, "Mediterranean California Red Fir Forest"), true);
+});
+
+test("scoreSpot: a host-bound species without its trees is scaled down hard; 'too cold' is never a good reason", () => {
+  const h = byId("hydnum-repandum");
+  const t = { elevationM: 1400, slopeDeg: 5, aspect: "N", tpiM: -10 };
+  const town = scoreSpot(h, 11, { lat: 0, lon: 0, terrain: t, cond: { ...WET, soilTempC: 3 }, evt: describeEvt(7298), burn: null });
+  assert.ok(town.score < 40, `hedgehog in town scored ${town.score}`);
+  const cold = town.reasons.find((r) => /too cold/.test(r.text));
+  assert.ok(cold && !cold.good);
 });
