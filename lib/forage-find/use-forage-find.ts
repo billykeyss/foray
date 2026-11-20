@@ -4,12 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { browserFindDeps } from "./browser.ts";
 import type { HabitatProfile } from "./profiles.ts";
 import { findForageSpots, type FindResult, type FindStep } from "./run.ts";
-import { loadStoredFind, saveStoredFind } from "./store.ts";
+import { loadStoredFind, matchStored, saveStoredFind, shouldStoreFind } from "./store.ts";
 
 export type FindState =
   | { kind: "idle" }
   | { kind: "running"; step: FindStep }
-  | { kind: "done"; result: FindResult; cached: boolean }
+  /** cached: a stored result, not a fresh run. stale: stored for a different centre or radius, so the
+   *  sheet must label it with its own place/radius/time instead of the current ones. */
+  | { kind: "done"; result: FindResult; cached: boolean; stale?: boolean }
   | { kind: "error"; message: string };
 
 export interface FindRequest {
@@ -18,11 +20,8 @@ export interface FindRequest {
   radiusKm: number;
 }
 
-const sameRequest = (r: FindResult, q: FindRequest) =>
-  r.speciesId === q.profile.id &&
-  r.radiusKm === q.radiusKm &&
-  Math.abs(r.center.lat - q.center.lat) < 0.01 &&
-  Math.abs(r.center.lon - q.center.lon) < 0.01;
+const match = (stored: FindResult | null, q: FindRequest) =>
+  matchStored(stored, { speciesId: q.profile.id, lat: q.center.lat, lon: q.center.lon, radiusKm: q.radiusKm });
 
 /** Runs Forage Finder searches in the browser: progress, cancel, and the last result cached in
  *  localStorage (shown, labelled with its time, when the network is out). */
@@ -44,9 +43,11 @@ export function useForageFind(allProfiles: HabitatProfile[], today: string) {
       const ac = new AbortController();
       ctrl.current = ac;
       const stored = loadStoredFind();
+      const m = match(stored, q);
+      const fallback = () => (m && stored ? ({ kind: "done", result: stored, cached: true, stale: m === "other" } as const) : null);
       const offline = typeof navigator !== "undefined" && navigator.onLine === false;
-      if (offline && stored && stored.speciesId === q.profile.id) {
-        setState({ kind: "done", result: stored, cached: true });
+      if (offline && m) {
+        setState(fallback()!);
         return;
       }
       setState({ kind: "running", step: "weather" });
@@ -64,22 +65,17 @@ export function useForageFind(allProfiles: HabitatProfile[], today: string) {
           },
         });
         if (ac.signal.aborted) return;
-        // Weather, terrain and trees all failing means we're effectively offline: prefer the last good result.
-        const blind = result.status !== "out-of-season" && result.notes.some((n) => n.startsWith("Weather unavailable")) && result.notes.some((n) => n.startsWith("Terrain unavailable"));
-        if (blind && stored && stored.speciesId === q.profile.id) {
-          setState({ kind: "done", result: stored, cached: true });
+        // Confidence is decided inside findForageSpots (shared with the Ask tool): "unavailable" has no
+        // pins and is never stored; "low-confidence" is shown live but never replaces a good result.
+        if (result.status === "unavailable") {
+          setState(fallback() ?? { kind: "error", message: result.message });
           return;
         }
-        if (blind) {
-          setState({ kind: "error", message: "Couldn't reach the weather or terrain services. Check your connection and try again." });
-          return;
-        }
-        saveStoredFind(result);
+        if (shouldStoreFind(result)) saveStoredFind(result);
         setState({ kind: "done", result, cached: false });
       } catch (e) {
         if ((e as Error)?.name === "AbortError" || ac.signal.aborted) return;
-        if (stored && stored.speciesId === q.profile.id) setState({ kind: "done", result: stored, cached: true });
-        else setState({ kind: "error", message: (e as Error)?.message || "Search failed" });
+        setState(fallback() ?? { kind: "error", message: (e as Error)?.message || "Search failed" });
       } finally {
         if (ctrl.current === ac) ctrl.current = null;
       }
@@ -90,7 +86,7 @@ export function useForageFind(allProfiles: HabitatProfile[], today: string) {
   /** Show the stored result for a request without hitting the network (if it matches and is fresh enough). */
   const showStored = useCallback((q: FindRequest, maxAgeMs = Infinity): boolean => {
     const stored = loadStoredFind();
-    if (stored && sameRequest(stored, q) && Date.now() - Date.parse(stored.at) <= maxAgeMs) {
+    if (stored && match(stored, q) === "exact" && Date.now() - Date.parse(stored.at) <= maxAgeMs) {
       ctrl.current?.abort();
       setState({ kind: "done", result: stored, cached: true });
       return true;

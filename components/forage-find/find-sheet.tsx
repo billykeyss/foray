@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { FindState } from "@/lib/forage-find/use-forage-find.ts";
 import type { FindResult, FoundSpot, FindStep } from "@/lib/forage-find/run.ts";
 import type { SeasonStatus } from "@/lib/forage-find/profiles.ts";
+import { fmtElev, fmtRain, fmtTemp, reasonText, unitSystemFor, type UnitSystem } from "@/lib/forage-find/format.ts";
 
 export interface PickerItem {
   id: string;
@@ -20,14 +21,13 @@ const STEPS: { key: Exclude<FindStep, "done">; label: string }[] = [
   { key: "trees", label: "Trees" },
 ];
 
-function fmtElev(m: number | null, unit: "m" | "ft"): string | null {
-  if (m == null) return null;
-  return unit === "ft" ? `${Math.round(m * 3.28084).toLocaleString("en-US")} ft` : `${Math.round(m).toLocaleString("en-US")} m`;
-}
-
-function fmtTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+/** "just now", "25 min ago", "2 h ago", "3 d ago". */
+function fmtAgo(iso: string, now = Date.now()): string {
+  const min = Math.max(0, Math.round((now - Date.parse(iso)) / 60000));
+  if (min < 2) return "just now";
+  if (min < 60) return `${min} min ago`;
+  const h = Math.round(min / 60);
+  return h < 48 ? `${h} h ago` : `${Math.round(h / 24)} d ago`;
 }
 
 /** Apple Maps on Apple devices, a geo: intent on Android, Google Maps directions elsewhere. */
@@ -44,12 +44,12 @@ function seasonText(r: Pick<FindResult, "season">): string {
   return `Out of season · ${r.season.months}`;
 }
 
-function Conditions({ result, speciesSeason }: { result: FindResult | null; speciesSeason: string | null }) {
+function Conditions({ result, speciesSeason, u }: { result: FindResult | null; speciesSeason: string | null; u: UnitSystem }) {
   const c = result?.conditions;
   const cells: [string, string][] = [
-    ["Rain 7d", c ? `${Math.round(c.rain7dMm)} mm` : "—"],
+    ["Rain 7d", c ? fmtRain(c.rain7dMm, u) : "—"],
     ["Humidity", c?.humidityPct != null ? `${c.humidityPct}%` : "—"],
-    ["Soil", c?.soilTempC != null ? `${Math.round(c.soilTempC)} °C` : "—"],
+    ["Soil", c?.soilTempC != null ? fmtTemp(c.soilTempC, u) : "—"],
   ];
   return (
     <div className="kp-find-cond" aria-label="Conditions at the search centre, past 7 days">
@@ -99,14 +99,14 @@ function SpotRow({
   spot: FoundSpot;
   selected: boolean;
   saved: boolean;
-  unit: "m" | "ft";
+  unit: UnitSystem;
   onSelect: () => void;
   onSave: () => void;
   onLog: () => void;
 }) {
   const good = spot.reasons.filter((r) => r.good).slice(0, 5);
   const bad = spot.reasons.filter((r) => !r.good).slice(0, 3);
-  const elev = fmtElev(spot.elevationM, unit);
+  const elev = spot.elevationM == null ? null : fmtElev(spot.elevationM, unit);
   return (
     <li className="kp-find-row" data-selected={selected ? "true" : "false"} data-find-rank={spot.rank}>
       <button type="button" className="kp-find-row-main" onClick={onSelect} aria-pressed={selected} aria-label={`Spot ${spot.rank}: ${spot.label}, score ${spot.score}. Show on map`}>
@@ -130,12 +130,12 @@ function SpotRow({
         <ul className="kp-find-chips" aria-label="Why">
           {good.map((r, i) => (
             <li key={`g${i}`} className="kp-find-chip">
-              {r.text}
+              {reasonText(r, unit)}
             </li>
           ))}
           {bad.map((r, i) => (
             <li key={`b${i}`} className="kp-find-chip kp-find-chip--bad">
-              {r.text}
+              {reasonText(r, unit)}
             </li>
           ))}
         </ul>
@@ -244,19 +244,21 @@ export interface FindSheetProps {
   onExpandedChange: (v: boolean) => void;
   /** Desktop-only header (the location chip row). */
   header?: ReactNode;
-  /** Open the species picker straight away (no species chosen yet). */
-  pickerOpen?: boolean;
 }
 
 /** The Find sheet: phone bottom sheet in the trip card's place, desktop left panel. Prop-driven. */
 export default function FindSheet(p: FindSheetProps) {
-  const [picking, setPicking] = useState(!!p.pickerOpen || !p.species);
+  const [picking, setPicking] = useState(!p.species);
+  const sectionRef = useRef<HTMLElement>(null);
   useEffect(() => {
-    if (p.pickerOpen) setPicking(true);
-  }, [p.pickerOpen]);
-  useEffect(() => {
+    // Escape closes the picker, then the sheet, but only when focus is in the sheet or nowhere in
+    // particular: never when another dialog, input or sheet has focus.
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const a = document.activeElement;
+      const inSheet = !!a && !!sectionRef.current?.contains(a);
+      if (!inSheet && a && a !== document.body) return;
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
       if (picking && p.species) setPicking(false);
       else p.onClose();
     };
@@ -264,7 +266,12 @@ export default function FindSheet(p: FindSheetProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [picking, p]);
 
+  const u = unitSystemFor(p.elevUnit);
   const result = p.state.kind === "done" ? p.state.result : null;
+  const stale = p.state.kind === "done" && !!p.state.stale;
+  // A shown result always speaks for its own search: its centre and radius, not the current ones.
+  const nearLabel = result ? result.center.label : p.locationLabel;
+  const shownRadius = result ? result.radiusKm : p.radiusKm;
   const pick = (id: string) => {
     setPicking(false);
     p.onSpecies(id);
@@ -272,7 +279,7 @@ export default function FindSheet(p: FindSheetProps) {
   const seasonFallback = p.species ? (p.species.status === "peak" ? "Peak now" : p.species.status === "in" ? "In season" : `Out of season · ${p.species.months}`) : null;
 
   return (
-    <section className="kp kp-trip kp-find" data-expanded={p.expanded ? "true" : "false"} aria-label="Find spots">
+    <section ref={sectionRef} className="kp kp-trip kp-find" data-expanded={p.expanded ? "true" : "false"} aria-label="Find spots">
       <div className="kp-trip-grab">
         <button
           type="button"
@@ -285,7 +292,7 @@ export default function FindSheet(p: FindSheetProps) {
       <div className="kp-trip-scroll kp-find-scroll">
         {p.header && <div className="kp-trip-header">{p.header}</div>}
         <div className="kp-find-head">
-          <span className="kp-trip-kicker">FIND SPOTS{p.hasLocation ? ` · NEAR ${p.locationLabel.toUpperCase()}` : ""}</span>
+          <span className="kp-trip-kicker">FIND SPOTS{p.hasLocation || result ? ` · NEAR ${nearLabel.toUpperCase()}` : ""}</span>
           <button type="button" className="kp-find-close" aria-label="Close find spots" onClick={p.onClose}>
             ×
           </button>
@@ -300,7 +307,7 @@ export default function FindSheet(p: FindSheetProps) {
           </button>
           <div className="kp-find-radius" role="group" aria-label="Search radius">
             {p.radii.map((r) => (
-              <button key={r} type="button" aria-pressed={p.radiusKm === r} onClick={() => p.onRadius(r)}>
+              <button key={r} type="button" aria-pressed={shownRadius === r} onClick={() => p.onRadius(r)}>
                 {r} km
               </button>
             ))}
@@ -318,7 +325,12 @@ export default function FindSheet(p: FindSheetProps) {
           </div>
         ) : (
           <>
-            <Conditions result={result} speciesSeason={seasonFallback} />
+            {stale && result && (
+              <p className="kp-find-stale" role="status">
+                Saved result near {result.center.label} · {result.radiusKm} km · {fmtAgo(result.at)}. Couldn’t search here right now.
+              </p>
+            )}
+            <Conditions result={result} speciesSeason={seasonFallback} u={u} />
             {p.state.kind === "running" && <Progress step={p.state.step} onCancel={p.onCancel} />}
             {p.state.kind === "idle" && p.species && (
               <div className="kp-find-empty-state">
@@ -341,7 +353,7 @@ export default function FindSheet(p: FindSheetProps) {
                 <p className="kp-find-msg" data-status={result.status}>
                   {result.message}
                 </p>
-                {result.status !== "ok" && <SeasonChips items={result.inSeasonNow} onPick={pick} />}
+                {(result.status === "poor" || result.status === "out-of-season") && <SeasonChips items={result.inSeasonNow} onPick={pick} />}
                 {result.spots.length > 0 && (
                   <ol className="kp-find-list">
                     {result.spots.map((s) => (
@@ -350,7 +362,7 @@ export default function FindSheet(p: FindSheetProps) {
                         spot={s}
                         selected={p.selectedRank === s.rank}
                         saved={p.isSaved(s)}
-                        unit={p.elevUnit}
+                        unit={u}
                         onSelect={() => p.onSelect(s.rank)}
                         onSave={() => p.onSave(s, result)}
                         onLog={() => p.onLogFind(s, result)}
@@ -359,8 +371,10 @@ export default function FindSheet(p: FindSheetProps) {
                   </ol>
                 )}
                 <footer className="kp-find-foot">
-                  {p.state.kind === "done" && p.state.cached && (
-                    <p className="kp-find-cached">Saved result from {fmtTime(result.at)} · may be out of date</p>
+                  {p.state.kind === "done" && p.state.cached && !stale && (
+                    <p className="kp-find-cached">
+                      Saved result near {result.center.label} · {result.radiusKm} km · {fmtAgo(result.at)}
+                    </p>
                   )}
                   {result.notes.map((n) => (
                     <p key={n} className="kp-find-note">

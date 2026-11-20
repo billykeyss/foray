@@ -29,6 +29,7 @@ import { FINDABLE_IDS, FINDABLE_PROFILES } from "@/lib/forage-find/catalog.ts";
 import { inSeasonNow, monthsText, seasonStatus } from "@/lib/forage-find/profiles.ts";
 import { DEFAULT_RADIUS_KM, RADII_KM, type FindResult, type FoundSpot } from "@/lib/forage-find/run.ts";
 import { useForageFind } from "@/lib/forage-find/use-forage-find.ts";
+import { reasonText, unitSystemFor } from "@/lib/forage-find/format.ts";
 import { haversineKm } from "@/lib/forage-find/geo.ts";
 import { JOURNAL_DRAFT_KEY } from "@/lib/journal-draft.ts";
 
@@ -146,14 +147,20 @@ export default function HomePage() {
     };
   }, []);
 
+  const { reset: resetFind } = finder;
   const openWater = useCallback((slug: string) => {
     const w = WATER_BY_SLUG.get(slug);
     if (!w) return;
+    // The rules sheet and the Find sheet are mutually exclusive (and so are ?spot= and ?find=).
+    setFind(null);
+    setFindSel(null);
+    resetFind();
+    setFindParam(null);
     setSpotlight(null);
     setSheetSlug(slug);
     setFocus([w.lon, w.lat]);
     setSpotParam(slug);
-  }, []);
+  }, [resetFind]);
 
   // Deep link: /?spot=<slug> opens that water's rules, /?find=<species id> the Find sheet. Unknown ids are ignored.
   useEffect(() => {
@@ -161,13 +168,16 @@ export default function HomePage() {
     const fLat = Number(qs.get("lat"));
     const fLon = Number(qs.get("lon"));
     if (qs.has("lat") && qs.has("lon") && Number.isFinite(fLat) && Number.isFinite(fLon)) setFocus([fLon, fLat]);
-    const slug = qs.get("spot");
-    if (slug && WATER_BY_SLUG.has(slug)) openWater(slug);
-    else if (slug) setSpotParam(null);
+    // Both ?spot= and ?find= (an old link): the Find sheet wins and ?spot= is dropped.
     const fid = qs.get("find");
-    if (fid && FINDABLE_IDS.has(fid)) {
+    const findOk = !!fid && FINDABLE_IDS.has(fid);
+    if (fid && !findOk) setFindParam(null);
+    const slug = qs.get("spot");
+    if (findOk) {
+      if (slug) setSpotParam(null);
       setFind({ id: fid, radiusKm: DEFAULT_RADIUS_KM });
-    } else if (fid) setFindParam(null);
+    } else if (slug && WATER_BY_SLUG.has(slug)) openWater(slug);
+    else if (slug) setSpotParam(null);
   }, [openWater]);
 
   const closeSheet = useCallback(() => {
@@ -284,7 +294,7 @@ export default function HomePage() {
           species: r.speciesName,
           lat: sp.lat,
           lon: sp.lon,
-          notes: `Forage Finder spot ${sp.rank} (${sp.label}, score ${sp.score}): ${sp.reasons.filter((x) => x.good).map((x) => x.text).join("; ")}`,
+          notes: `Forage Finder spot ${sp.rank} (${sp.label}, score ${sp.score}): ${sp.reasons.filter((x) => x.good).map((x) => reasonText(x, unitSystemFor(elevUnit))).join("; ")}`,
         }),
       );
     } catch {}

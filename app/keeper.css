@@ -1557,7 +1557,7 @@
 .kp .kp-find-empty-state { margin-top: 14px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
 .kp .kp-find-empty-state p { margin: 0; font-size: 14px; line-height: 1.4; }
 .kp .kp-find-msg { margin: 12px 0 4px; font: 500 15px/1.4 var(--kp-font-body); color: var(--kp-ink); }
-.kp .kp-find-msg[data-status="out-of-season"], .kp .kp-find-msg[data-status="poor"] { padding: 9px 12px; border-left: 3px solid var(--kp-brass); border-radius: 8px; background: var(--kp-warn-bg); }
+.kp .kp-find-msg[data-status="out-of-season"], .kp .kp-find-msg[data-status="poor"], .kp .kp-find-msg[data-status="low-confidence"], .kp .kp-find-msg[data-status="unavailable"] { padding: 9px 12px; border-left: 3px solid var(--kp-brass); border-radius: 8px; background: var(--kp-warn-bg); }
 .kp .kp-find-season { margin: 8px 0 4px; }
 .kp .kp-find-season-h { display: block; margin-bottom: 6px; font: 500 11px var(--kp-font-mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--kp-ink-64); }
 .kp .kp-find-season ul { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
@@ -1596,6 +1596,7 @@
 .kp .kp-find-act:disabled { color: var(--kp-warden); border-color: color-mix(in srgb, var(--kp-warden) 40%, transparent); cursor: default; }
 .kp .kp-find-foot { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--kp-ink-12); }
 .kp .kp-find-foot p { margin: 0 0 6px; font-size: 12px; line-height: 1.4; }
+.kp .kp-find-stale { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; background: var(--kp-warn-bg); font: 600 12px/1.4 var(--kp-font-body); color: var(--kp-brass-ink); }
 .kp .kp-find-cached { font: 500 11px var(--kp-font-mono) !important; color: var(--kp-brass-ink); }
 .kp .kp-find-note { color: var(--kp-ink-64); }
 .kp .kp-find-caution { font-weight: 600; color: var(--kp-ink); }
